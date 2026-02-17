@@ -40,12 +40,15 @@ async function createTestUser() {
       console.log("✅ Password updated!");
     } else {
       console.log(`Creating new user '${testUsername}'...`);
+      const now = new Date().toISOString();
       await db.insert(usuarios).values({
         username: testUsername,
         nombre: "Admin",
         apellido: "User",
         passwordHash: hashedPassword,
         activo: true,
+        createdAt: now,
+        updatedAt: now,
       });
       console.log("✅ User created!");
     }
