@@ -1,0 +1,7 @@
+{
+  "scripts": {
+    "fix-permissions": "npx tsx scripts/fix-backup-permissions.ts",
+    "create-notifications": "npx tsx scripts/create-notifications-table.ts",
+    "fix-all": "npm run create-notifications && npm run fix-permissions"
+  }
+}

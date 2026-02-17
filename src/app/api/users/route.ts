@@ -1,71 +1,119 @@
-import { NextResponse } from "next/server";
-import { db } from "@/lib/db";
-import { usuarios, usuariosRoles } from "@/lib/db/schema";
+import { NextRequest, NextResponse } from "next/server";
 import { desc, sql } from "drizzle-orm";
 
-export async function GET() {
+import { hashPassword } from "@/lib/auth";
+import { withAuth } from "@/lib/api-auth";
+import { successResponse, errorResponse, CommonErrors } from "@/lib/api-response";
+import { db } from "@/lib/db";
+import { usuarios, usuariosRoles } from "@/lib/db/schema";
+import { getPaginationParams, getPaginationOffset, getTotalCount, createPaginatedData } from "@/lib/pagination";
+import { validateRequest } from "@/lib/validation";
+import { createUserSchema } from "@/schemas/user.schema";
+
+export const GET = withAuth(
+  async (req: NextRequest, { user }) => {
     try {
-        // @ts-ignore - Bypassing Drizzle typing error for query schema
-        const allUsers = await (db.query as any).usuarios.findMany({
-            orderBy: [desc(usuarios.createdAt)],
+      // Get pagination parameters
+      const { page, limit, sortBy, sortOrder } = getPaginationParams(req);
+      const offset = getPaginationOffset(page, limit);
+
+      // Get total count
+      const total = await getTotalCount(usuarios);
+
+      // Fetch paginated users with their roles
+      // @ts-ignore - Bypassing Drizzle typing error for query schema
+      const allUsers = await (db.query as any).usuarios.findMany({
+        limit,
+        offset,
+        orderBy:
+          sortBy === "username"
+            ? sortOrder === "asc"
+              ? [sql`${usuarios.username} ASC`]
+              : [desc(usuarios.username)]
+            : sortOrder === "asc"
+              ? [sql`${usuarios.createdAt} ASC`]
+              : [desc(usuarios.createdAt)],
+        with: {
+          usuariosRoles_usuarioId: {
             with: {
-                usuariosRoles_usuarioId: {
-                    with: {
-                        role: true
-                    }
-                }
-            }
-        });
+              role: true,
+            },
+          },
+        },
+      });
 
-        return NextResponse.json(JSON.parse(JSON.stringify(allUsers, (key, value) =>
-            typeof value === 'bigint' ? value.toString() : value
-        )));
+      const serializedUsers = JSON.parse(
+        JSON.stringify(allUsers, (key, value) => (typeof value === "bigint" ? value.toString() : value)),
+      );
+
+      return successResponse(createPaginatedData(serializedUsers, page, limit, total));
     } catch (error: any) {
-        console.error("Error fetching users:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Error fetching users:", error);
+      return CommonErrors.internalError("Error al obtener usuarios");
     }
-}
+  },
+  { requiredPermission: "usuarios:leer" },
+);
 
-export async function POST(request: Request) {
+export const POST = withAuth(
+  async (req: NextRequest, { user }) => {
     try {
-        const body = await request.json();
-        const { username, nombre, apellido, email, password, rolId } = body;
+      const body = await req.json();
 
-        if (!username || !nombre || !apellido || !password) {
-            return NextResponse.json({ error: "Faltan campos obligatorios" }, { status: 400 });
+      // Validate request body
+      const { data: validatedData, error } = await validateRequest(body, createUserSchema);
+      if (error) return error;
+
+      const { username, nombre, apellido, email, password, rolId, ...otherData } = validatedData!;
+
+      const result = await db.transaction(async (tx) => {
+        // 1. Hash the password
+        const passwordHash = await hashPassword(password);
+
+        // 2. Create the user
+        const [newUser] = await tx
+          .insert(usuarios)
+          .values({
+            username,
+            nombre,
+            apellido,
+            email: email || null,
+            passwordHash,
+            activo: otherData.activo ?? true,
+            esEmpleado: otherData.esEmpleado ?? false,
+            esCliente: otherData.esCliente ?? false,
+            telefono: otherData.telefono || null,
+            cedula: otherData.cedula || null,
+            direccion: otherData.direccion || null,
+            fechaNacimiento: otherData.fechaNacimiento || null,
+            sexo: otherData.sexo || null,
+            notas: otherData.notas || null,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .returning();
+
+        // 3. Assign the role if provided
+        if (rolId) {
+          await tx.insert(usuariosRoles).values({
+            usuarioId: newUser.id,
+            rolId: Number(rolId),
+            activo: true,
+            fechaAsignacion: sql`CURRENT_TIMESTAMP`,
+          });
         }
 
-        const result = await db.transaction(async (tx) => {
-            // 1. Create the user
-            const [newUser] = await tx.insert(usuarios).values({
-                username,
-                nombre,
-                apellido,
-                email: email || null,
-                passwordHash: password, // FIXME: In a real app, hash the password
-                activo: true,
-                updatedAt: sql`CURRENT_TIMESTAMP`,
-            }).returning();
+        return newUser;
+      });
 
-            // 2. Assign the role if provided
-            if (rolId) {
-                await tx.insert(usuariosRoles).values({
-                    usuarioId: newUser.id,
-                    rolId: Number(rolId),
-                    activo: true,
-                    fechaAsignacion: sql`CURRENT_TIMESTAMP`,
-                });
-            }
-
-            return newUser;
-        });
-
-        return NextResponse.json({ success: true, user: result });
+      return successResponse({ user: result }, undefined, 201);
     } catch (error: any) {
-        console.error("Error creating user:", error);
-        if (error.code === '23505') { // Unique constraint violation
-            return NextResponse.json({ error: "El nombre de usuario o email ya existe" }, { status: 400 });
-        }
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Error creating user:", error);
+      if (error.code === "23505") {
+        // Unique constraint violation
+        return errorResponse("El nombre de usuario o email ya existe", 409);
+      }
+      return CommonErrors.internalError("Error al crear usuario");
     }
-}
+  },
+  { requiredPermission: "usuarios:crear" },
+);

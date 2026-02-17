@@ -1,0 +1,64 @@
+
+Active Session:
+ID: 53e7c117-11dd-4de8-8c54-a5402e4da73a
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha Apertura: Thu Feb 12 2026 14:45:05 GMT-0400 (Venezuela Time)
+Usuario ID: df4b1335-5ff6-4703-8dcd-3e2f74fb0822
+
+--- RECENT MOVEMENTS (GLOBAL) ---
+
+ID: 8e16d81d-8f3e-4c94-8967-87ce5d92907b
+Tipo: ingreso
+Monto: 45.00
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha: Thu Feb 12 2026 14:06:45 GMT-0400 (Venezuela Time)
+Metodo: papeleria
+Usuario: 961c0326-f76d-4424-8623-6cbb0cfcdfe1
+Matches Session Caja? YES
+After Opening? NO
+
+
+ID: 8fb93d77-4402-4d6b-ab9a-1ef619b30e53
+Tipo: ingreso
+Monto: 30.00
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha: Wed Feb 11 2026 17:51:48 GMT-0400 (Venezuela Time)
+Metodo: papeleria
+Usuario: 961c0326-f76d-4424-8623-6cbb0cfcdfe1
+Matches Session Caja? YES
+After Opening? NO
+
+
+ID: b7855925-5142-44b6-9cc7-90dafe9ec4b6
+Tipo: ingreso
+Monto: 20.00
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha: Wed Feb 11 2026 17:20:28 GMT-0400 (Venezuela Time)
+Metodo: papeleria
+Usuario: 961c0326-f76d-4424-8623-6cbb0cfcdfe1
+Matches Session Caja? YES
+After Opening? NO
+
+
+ID: b0e4c71f-ed85-4451-a2a4-57c9a3167dea
+Tipo: ingreso
+Monto: 50.00
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha: Wed Feb 11 2026 17:19:49 GMT-0400 (Venezuela Time)
+Metodo: papeleria
+Usuario: 961c0326-f76d-4424-8623-6cbb0cfcdfe1
+Matches Session Caja? YES
+After Opening? NO
+
+
+ID: e307e1a3-ba0b-4e69-9b1e-65e20542cb04
+Tipo: ingreso
+Monto: 150.00
+Caja ID: 2ed1e8c1-0428-457f-b786-1af6d2b3cb01
+Fecha: Wed Feb 11 2026 17:17:17 GMT-0400 (Venezuela Time)
+Metodo: papeleria
+Usuario: 961c0326-f76d-4424-8623-6cbb0cfcdfe1
+Matches Session Caja? YES
+After Opening? NO
+
+        

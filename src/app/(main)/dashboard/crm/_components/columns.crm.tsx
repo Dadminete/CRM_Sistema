@@ -1,13 +1,16 @@
 import { ColumnDef } from "@tanstack/react-table";
 import { EllipsisVertical } from "lucide-react";
 import z from "zod";
+import { cn } from "@/lib/utils";
 
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 
-import { recentLeadSchema } from "./schema";
+import { recentLeadSchema, recentMovementSchema } from "./schema";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 
 export const recentLeadsColumns: ColumnDef<z.infer<typeof recentLeadSchema>>[] = [
   {
@@ -79,5 +82,63 @@ export const recentLeadsColumns: ColumnDef<z.infer<typeof recentLeadSchema>>[] =
       </Button>
     ),
     enableSorting: false,
+  },
+];
+
+export const recentMovementsColumns: ColumnDef<z.infer<typeof recentMovementSchema>>[] = [
+  {
+    accessorKey: "fecha",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Fecha" />,
+    cell: ({ row }) => {
+      const date = new Date(row.original.fecha);
+      return <span className="tabular-nums">{format(date, "dd/MM/yyyy HH:mm", { locale: es })}</span>;
+    },
+  },
+  {
+    accessorKey: "descripcion",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Descripción" />,
+    cell: ({ row }) => <span className="font-medium">{row.original.descripcion || "Sin descripción"}</span>,
+  },
+  {
+    accessorKey: "tipo",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Tipo" />,
+    cell: ({ row }) => {
+      const tipo = row.original.tipo;
+      const isIngreso = tipo.toLowerCase().includes("ingreso");
+      return (
+        <Badge
+          variant={isIngreso ? "secondary" : "destructive"}
+          className={isIngreso ? "bg-green-100 text-green-700 hover:bg-green-100" : ""}
+        >
+          {tipo.toUpperCase()}
+        </Badge>
+      );
+    },
+  },
+  {
+    accessorKey: "metodo",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Método" />,
+    cell: ({ row }) => <Badge variant="outline">{row.original.metodo.toUpperCase()}</Badge>,
+  },
+  {
+    accessorKey: "categoria",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Categoría" />,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.categoria || "S/C"}</span>,
+  },
+  {
+    accessorKey: "monto",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Monto" />,
+    cell: ({ row }) => {
+      const amount = Number(row.original.monto);
+      const isIngreso = row.original.tipo.toLowerCase().includes("ingreso");
+      return (
+        <span className={cn("font-medium tabular-nums", isIngreso ? "text-green-600" : "text-red-600")}>
+          {new Intl.NumberFormat("es-DO", {
+            style: "currency",
+            currency: "DOP",
+          }).format(amount)}
+        </span>
+      );
+    },
   },
 ];

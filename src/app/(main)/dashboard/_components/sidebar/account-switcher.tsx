@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { BadgeCheck, Bell, CreditCard, LogOut } from "lucide-react";
 
@@ -13,7 +14,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuGroup,
 } from "@/components/ui/dropdown-menu";
-import { cn, getInitials } from "@/lib/utils";
+import { getInitials } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function AccountSwitcher({
   users,
@@ -26,54 +28,81 @@ export function AccountSwitcher({
     readonly role: string;
   }>;
 }) {
-  const [activeUser, setActiveUser] = useState(users[0]);
+  const user = users[0]; // Solo usamos el primer usuario (el usuario en sesión)
+  const router = useRouter();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      const response = await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        toast.error("Error al cerrar sesión", {
+          description: "Ocurrió un error durante el cierre de sesión.",
+        });
+        setIsLoggingOut(false);
+        return;
+      }
+
+      toast.success("Sesión cerrada", {
+        description: "Has cerrado sesión exitosamente.",
+      });
+
+      // Redirect to login
+      router.push("/auth/v2/login");
+      router.refresh();
+    } catch (error) {
+      toast.error("Error", {
+        description: "Ocurrió un error inesperado.",
+      });
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Avatar className="size-9 rounded-lg">
-          <AvatarImage src={activeUser.avatar || undefined} alt={activeUser.name} />
-          <AvatarFallback className="rounded-lg">{getInitials(activeUser.name)}</AvatarFallback>
+        <Avatar className="size-9 rounded-lg cursor-pointer">
+          <AvatarImage src={user.avatar || undefined} alt={user.name} />
+          <AvatarFallback className="rounded-lg">{getInitials(user.name)}</AvatarFallback>
         </Avatar>
       </DropdownMenuTrigger>
       <DropdownMenuContent className="min-w-56 space-y-1 rounded-lg" side="bottom" align="end" sideOffset={4}>
-        {users.map((user) => (
-          <DropdownMenuItem
-            key={user.email}
-            className={cn("p-0", user.id === activeUser.id && "bg-accent/50 border-l-primary border-l-2")}
-            onClick={() => setActiveUser(user)}
-          >
-            <div className="flex w-full items-center justify-between gap-2 px-1 py-1.5">
-              <Avatar className="size-9 rounded-lg">
-                <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                <AvatarFallback className="rounded-lg">{getInitials(user.name)}</AvatarFallback>
-              </Avatar>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{user.name}</span>
-                <span className="truncate text-xs capitalize">{user.role}</span>
-              </div>
-            </div>
-          </DropdownMenuItem>
-        ))}
+        <div className="flex w-full items-center justify-between gap-2 px-1 py-1.5">
+          <Avatar className="size-9 rounded-lg">
+            <AvatarImage src={user.avatar || undefined} alt={user.name} />
+            <AvatarFallback className="rounded-lg">{getInitials(user.name)}</AvatarFallback>
+          </Avatar>
+          <div className="grid flex-1 text-left text-sm leading-tight">
+            <span className="truncate font-semibold">{user.name}</span>
+            <span className="truncate text-xs capitalize">{user.role}</span>
+          </div>
+        </div>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
           <DropdownMenuItem>
             <BadgeCheck />
-            Account
+            Cuenta
           </DropdownMenuItem>
           <DropdownMenuItem>
             <CreditCard />
-            Billing
+            Nómina
           </DropdownMenuItem>
           <DropdownMenuItem>
             <Bell />
-            Notifications
+            Notificaciones
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
           <LogOut />
-          Log out
+          {isLoggingOut ? "Cerrando sesión..." : "Salir"}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

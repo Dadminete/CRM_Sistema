@@ -5,7 +5,6 @@ import { cookies } from "next/headers";
 import { AppSidebar } from "@/app/(main)/dashboard/_components/sidebar/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
-import { users } from "@/data/users";
 import { cn } from "@/lib/utils";
 import { getPreference } from "@/server/server-actions";
 import {
@@ -16,15 +15,33 @@ import {
   type SidebarCollapsible,
   type ContentLayout,
 } from "@/types/preferences/layout";
+import { getCurrentUser } from "@/lib/auth";
 
 import { AccountSwitcher } from "./_components/sidebar/account-switcher";
 import { LayoutControls } from "./_components/sidebar/layout-controls";
 import { SearchDialog } from "./_components/sidebar/search-dialog";
 import { ThemeSwitcher } from "./_components/sidebar/theme-switcher";
+import { NotificationMenu } from "./_components/notification-menu";
 
 export default async function Layout({ children }: Readonly<{ children: ReactNode }>) {
   const cookieStore = await cookies();
   const defaultOpen = cookieStore.get("sidebar_state")?.value === "true";
+  const authToken = cookieStore.get("auth-token")?.value;
+
+  // Get current user from session
+  const currentUser = await getCurrentUser(authToken);
+  
+  // Prepare user data for components
+  const userData = currentUser
+    ? {
+        id: currentUser.id,
+        name: `${currentUser.nombre} ${currentUser.apellido}`,
+        username: currentUser.username,
+        email: currentUser.email || "",
+        avatar: currentUser.avatar || "",
+        role: "usuario", // You can add role to the user query if needed
+      }
+    : null;
 
   const [sidebarVariant, sidebarCollapsible, contentLayout] = await Promise.all([
     getPreference<SidebarVariant>("sidebar_variant", SIDEBAR_VARIANT_VALUES, "inset"),
@@ -40,7 +57,7 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
 
   return (
     <SidebarProvider defaultOpen={defaultOpen}>
-      <AppSidebar variant={sidebarVariant} collapsible={sidebarCollapsible} />
+      <AppSidebar variant={sidebarVariant} collapsible={sidebarCollapsible} user={userData} />
       <SidebarInset
         data-content-layout={contentLayout}
         className={cn(
@@ -59,8 +76,9 @@ export default async function Layout({ children }: Readonly<{ children: ReactNod
             </div>
             <div className="flex items-center gap-2">
               <LayoutControls {...layoutPreferences} />
+              <NotificationMenu />
               <ThemeSwitcher />
-              <AccountSwitcher users={users} />
+              {userData && <AccountSwitcher users={[userData]} />}
             </div>
           </div>
         </header>

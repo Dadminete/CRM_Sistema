@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -37,14 +38,16 @@ const IsComingSoon = () => (
 const NavItemExpanded = ({
   item,
   isActive,
-  isSubmenuOpen,
+  isOpen,
+  onOpenChange,
 }: {
   item: NavMainItem;
   isActive: (url: string, subItems?: NavMainItem["subItems"]) => boolean;
-  isSubmenuOpen: (subItems?: NavMainItem["subItems"]) => boolean;
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
 }) => {
   return (
-    <Collapsible key={item.title} asChild defaultOpen={isSubmenuOpen(item.subItems)} className="group/collapsible">
+    <Collapsible key={item.title} asChild open={isOpen} onOpenChange={onOpenChange} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
           {item.subItems ? (
@@ -78,7 +81,7 @@ const NavItemExpanded = ({
             <SidebarMenuSub>
               {item.subItems.map((subItem) => (
                 <SidebarMenuSubItem key={subItem.title}>
-                  <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={isActive(subItem.url)} asChild>
+                  <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={pathIsMatch(subItem.url)} asChild>
                     <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
                       {subItem.icon && <subItem.icon />}
                       <span>{subItem.title}</span>
@@ -93,6 +96,12 @@ const NavItemExpanded = ({
       </SidebarMenuItem>
     </Collapsible>
   );
+};
+
+// Helper to check if a path matches the current URL
+const pathIsMatch = (url: string) => {
+  const pathname = usePathname();
+  return pathname === url;
 };
 
 const NavItemCollapsed = ({
@@ -124,7 +133,7 @@ const NavItemCollapsed = ({
                 asChild
                 className="focus-visible:ring-0"
                 aria-disabled={subItem.comingSoon}
-                isActive={isActive(subItem.url)}
+                isActive={pathIsMatch(subItem.url)}
               >
                 <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
                   {subItem.icon && <subItem.icon className="[&>svg]:text-sidebar-foreground" />}
@@ -146,14 +155,28 @@ export function NavMain({ items }: NavMainProps) {
 
   const isItemActive = (url: string, subItems?: NavMainItem["subItems"]) => {
     if (subItems?.length) {
-      return subItems.some((sub) => path.startsWith(sub.url));
+      return subItems.some((sub) => path === sub.url);
     }
     return path === url;
   };
 
   const isSubmenuOpen = (subItems?: NavMainItem["subItems"]) => {
-    return subItems?.some((sub) => path.startsWith(sub.url)) ?? false;
+    return subItems?.some((sub) => path === sub.url) ?? false;
   };
+
+  // Find which item should be open initially based on the path
+  const initialOpenItem =
+    items.flatMap((group) => group.items).find((item) => isSubmenuOpen(item.subItems))?.title || null;
+
+  const [openTitle, setOpenTitle] = React.useState<string | null>(initialOpenItem);
+
+  // Update open item if path changes externally
+  React.useEffect(() => {
+    const activeItem = items.flatMap((group) => group.items).find((item) => isSubmenuOpen(item.subItems));
+    if (activeItem) {
+      setOpenTitle(activeItem.title);
+    }
+  }, [path, items]);
 
   return (
     <>
@@ -163,6 +186,9 @@ export function NavMain({ items }: NavMainProps) {
           <SidebarGroupContent className="flex flex-col gap-2">
             <SidebarMenu>
               {group.items.map((item) => {
+                const isActive = isItemActive(item.url, item.subItems);
+                const isOpen = openTitle === item.title;
+
                 if (state === "collapsed" && !isMobile) {
                   // If no subItems, just render the button as a link
                   if (!item.subItems) {
@@ -172,7 +198,7 @@ export function NavMain({ items }: NavMainProps) {
                           asChild
                           aria-disabled={item.comingSoon}
                           tooltip={item.title}
-                          isActive={isItemActive(item.url)}
+                          isActive={isActive}
                         >
                           <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
                             {item.icon && <item.icon />}
@@ -187,7 +213,13 @@ export function NavMain({ items }: NavMainProps) {
                 }
                 // Expanded view
                 return (
-                  <NavItemExpanded key={item.title} item={item} isActive={isItemActive} isSubmenuOpen={isSubmenuOpen} />
+                  <NavItemExpanded
+                    key={item.title}
+                    item={item}
+                    isActive={isItemActive}
+                    isOpen={isOpen}
+                    onOpenChange={(open) => setOpenTitle(open ? item.title : null)}
+                  />
                 );
               })}
             </SidebarMenu>

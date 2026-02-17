@@ -1,11 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { backupService } from "@/lib/db/backup-service";
+import { withAuth } from "@/lib/api-auth";
+import { successResponse, CommonErrors } from "@/lib/api-response";
 
-export async function POST() {
+export const POST = withAuth(
+  async (req: NextRequest, { user }) => {
     try {
-        const result = await backupService.createBackup();
-        return NextResponse.json({ success: true, ...result });
+      const result = await backupService.createBackup();
+      return successResponse(result, undefined, 201);
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("Error creating backup:", error);
+      return CommonErrors.internalError("Error al crear backup de la base de datos");
     }
-}
+  },
+  { requiredPermission: "database:backup" },
+);

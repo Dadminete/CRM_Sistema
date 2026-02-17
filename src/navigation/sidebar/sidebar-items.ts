@@ -126,6 +126,16 @@ export const sidebarItems: NavGroup[] = [
             url: "/dashboard/finance",
             icon: Banknote,
           },
+          {
+            title: "Gestion de Banco",
+            url: "/dashboard/banco/gestion",
+            icon: Landmark,
+          },
+          {
+            title: "Banfondesa",
+            url: "/dashboard/banco/banfondesa",
+            icon: Landmark,
+          },
         ],
       },
       {
@@ -147,6 +157,11 @@ export const sidebarItems: NavGroup[] = [
             title: "Listado Cajas",
             url: "/dashboard/cajas-chicas/listado",
             icon: List,
+          },
+          {
+            title: "Resolución Discrepancias",
+            url: "/dashboard/cajas-chicas/discrepancias",
+            icon: FileCheck,
           },
         ],
       },
