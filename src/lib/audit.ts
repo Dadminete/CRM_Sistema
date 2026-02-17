@@ -1,6 +1,7 @@
+import { NextRequest } from "next/server";
+
 import { db } from "@/lib/db";
 import { bitacora } from "@/lib/db/schema";
-import { NextRequest } from "next/server";
 
 export type AuditAction =
   | "LOGIN"

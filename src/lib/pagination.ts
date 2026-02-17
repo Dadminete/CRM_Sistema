@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
-import { z } from "zod";
+
 import { SQL, sql } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
+import { z } from "zod";
 
 import { db } from "@/lib/db";
 

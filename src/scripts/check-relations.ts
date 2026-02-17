@@ -1,6 +1,7 @@
+const { eq } = require("drizzle-orm");
+
 const { db } = require("./src/lib/db");
 const { facturasClientes, suscripciones, contratos } = require("./src/lib/db/schema");
-const { eq } = require("drizzle-orm");
 
 async function check() {
   try {

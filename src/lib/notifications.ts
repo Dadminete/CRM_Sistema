@@ -1,7 +1,8 @@
-import { db } from "@/lib/db";
 import { sql } from "drizzle-orm";
 
 import { logger } from "./logger";
+
+import { db } from "@/lib/db";
 
 export type NotificationType = "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "FACTURA" | "APROBACION" | "STOCK";
 

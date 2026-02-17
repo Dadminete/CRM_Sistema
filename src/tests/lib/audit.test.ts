@@ -1,7 +1,8 @@
+import { NextRequest } from "next/server";
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import { logAudit, logDataChange, withAuditLog } from "@/lib/audit";
-import { NextRequest } from "next/server";
 
 // Mock the entire db module
 vi.mock("@/lib/db", () => ({

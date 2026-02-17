@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   pgTable,
   index,
@@ -19,7 +20,6 @@ import {
   primaryKey,
   pgEnum,
 } from "drizzle-orm/pg-core";
-import { sql } from "drizzle-orm";
 
 export const categoriaCliente = pgEnum("CategoriaCliente", ["NUEVO", "VIEJO", "VIP", "INACTIVO"]);
 export const sexo = pgEnum("Sexo", ["MASCULINO", "FEMENINO", "OTRO"]);

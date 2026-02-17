@@ -5,8 +5,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { checkRateLimit } from "./rate-limit";
 import { errorResponse } from "./api-response";
+import { checkRateLimit } from "./rate-limit";
 
 interface RateLimitOptions {
   requests: number;
@@ -16,7 +16,7 @@ interface RateLimitOptions {
 /**
  * Wrap an API handler with rate limiting
  */
-export function withRateLimit<T extends (req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
+export function withRateLimit<T extends(req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
   handler: T,
   options: RateLimitOptions = { requests: 100, window: 60000 },
 ): T {
@@ -42,7 +42,7 @@ export function withRateLimit<T extends (req: NextRequest, ...args: unknown[]) =
 /**
  * Stricter rate limiting for sensitive operations
  */
-export function withStrictRateLimit<T extends (req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
+export function withStrictRateLimit<T extends(req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
   handler: T,
 ): T {
   return withRateLimit(handler, { requests: 10, window: 60000 }); // 10 requests per minute
@@ -51,7 +51,7 @@ export function withStrictRateLimit<T extends (req: NextRequest, ...args: unknow
 /**
  * Lenient rate limiting for public endpoints
  */
-export function withLenientRateLimit<T extends (req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
+export function withLenientRateLimit<T extends(req: NextRequest, ...args: unknown[]) => Promise<NextResponse>>(
   handler: T,
 ): T {
   return withRateLimit(handler, { requests: 300, window: 60000 }); // 300 requests per minute

@@ -1,7 +1,8 @@
 import "dotenv/config";
+import { eq } from "drizzle-orm";
+
 import { db } from "../lib/db";
 import { facturasClientes, suscripciones, contratos } from "../lib/db/schema";
-import { eq } from "drizzle-orm";
 
 async function debug() {
   try {

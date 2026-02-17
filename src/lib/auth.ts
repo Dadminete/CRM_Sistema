@@ -1,8 +1,9 @@
 import bcrypt from "bcryptjs";
+import { eq, and } from "drizzle-orm";
 import jwt from "jsonwebtoken";
+
 import { db } from "@/lib/db";
 import { sesionesUsuario, usuarios } from "@/lib/db/schema";
-import { eq, and } from "drizzle-orm";
 
 const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this-in-production";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "30d";

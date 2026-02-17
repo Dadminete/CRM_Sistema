@@ -1,6 +1,7 @@
+import { eq, desc } from "drizzle-orm";
+
 import { db } from "../lib/db";
 import { cajas, sesionesCaja } from "../lib/db/schema";
-import { eq, desc } from "drizzle-orm";
 
 async function checkCajas() {
   const allCajas = await db.select().from(cajas);

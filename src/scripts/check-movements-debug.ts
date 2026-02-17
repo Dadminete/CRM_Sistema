@@ -1,8 +1,10 @@
 import * as dotenv from "dotenv";
+
 dotenv.config();
+import { eq, and, gte, sql } from "drizzle-orm";
+
 import { db } from "../lib/db";
 import { movimientosContables, cajas } from "../lib/db/schema";
-import { eq, and, gte, sql } from "drizzle-orm";
 
 async function checkMovements() {
   const today = new Date().toISOString().split("T")[0];

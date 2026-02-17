@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
+
 import { eq, and } from "drizzle-orm";
 
+import { logAudit } from "@/lib/audit";
 import { verifyToken, getUserBySession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { permisos, rolesPermisos, usuariosRoles, usuariosPermisos } from "@/lib/db/schema";
-import { logAudit } from "@/lib/audit";
 
 export interface AuthenticatedUser {
   id: string;
@@ -67,12 +68,12 @@ export async function getUserPermissions(userId: string): Promise<string[]> {
 export async function checkPermission(userId: string, requiredPermission: string): Promise<boolean> {
   // Check if user is superadmin (has all permissions)
   const permissions = await getUserPermissions(userId);
-  
+
   // Superadmin bypass: if user has 'superadmin' or '*' permission, grant all access
-  if (permissions.includes('superadmin') || permissions.includes('*')) {
+  if (permissions.includes("superadmin") || permissions.includes("*")) {
     return true;
   }
-  
+
   return permissions.includes(requiredPermission);
 }
 
