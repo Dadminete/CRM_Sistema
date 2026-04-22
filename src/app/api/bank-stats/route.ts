@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
+
 import { db } from "@/lib/db";
-import { cuentasBancarias, cuentasContables, movimientosContables } from "@/lib/db/schema";
-import { and, gte, lte, sql, eq, inArray } from "drizzle-orm";
+import { banks, cuentasBancarias, cuentasContables, movimientosContables } from "@/lib/db/schema";
 
 // Forzar que el endpoint sea dinámico y no se cachee
 export const dynamic = "force-dynamic";
@@ -9,67 +11,82 @@ export const revalidate = 0;
 
 export async function GET() {
   try {
-    // 1. Obtener IDs únicos de cuentas contables que están asociadas a cuentas bancarias activas
-    const accountsSubquery = db
-      .select({ id: cuentasBancarias.cuentaContableId })
-      .from(cuentasBancarias)
-      .where(eq(cuentasBancarias.activo, true));
+    // 1. Obtener el saldo total de todas las cuentas bancarias activas en una sola consulta
+    // Saldo = SaldoInicial (libro mayor) + Sum(Ingresos) - Sum(Gastos)
+    const accountStats = await db.execute(sql`
+      SELECT 
+        COALESCE(SUM(CAST(cc.saldo_inicial AS DECIMAL)), 0) as total_inicial,
+        COALESCE(SUM(CASE WHEN mc.tipo = 'ingreso' THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) as total_ingresos,
+        COALESCE(SUM(CASE WHEN mc.tipo = 'gasto' THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) as total_gastos
+      FROM cuentas_bancarias cb
+      JOIN cuentas_contables cc ON cb.cuenta_contable_id = cc.id
+      LEFT JOIN movimientos_contables mc ON mc.cuenta_bancaria_id = cb.id
+      WHERE cb.activo = true
+    `);
 
-    // 2. Sumar el saldo de esas cuentas contables únicas
-    const cuentas = await db
-      .select({
-        total: sql<number>`COALESCE(SUM(CAST(${cuentasContables.saldoActual} AS DECIMAL)), 0)`,
-      })
-      .from(cuentasContables)
-      .where(inArray(cuentasContables.id, accountsSubquery));
+    const stats = (accountStats.rows[0] as any) || { total_inicial: 0, total_ingresos: 0, total_gastos: 0 };
+    const saldoTotal = Number(stats.total_inicial) + Number(stats.total_ingresos) - Number(stats.total_gastos);
 
-    const saldoTotal = Number(cuentas[0]?.total || 0);
+    // 2. Obtener datos de los últimos 6 meses en una sola consulta
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
 
-    // 3. Obtener datos de los últimos 3 meses
+    const monthlyStatsRaw = await db.execute(sql`
+      SELECT 
+        DATE_TRUNC('month', fecha)::date as mes_fecha,
+        COALESCE(SUM(CASE WHEN tipo = 'ingreso' THEN CAST(monto AS DECIMAL) ELSE 0 END), 0) as ingresos,
+        COALESCE(SUM(CASE WHEN tipo = 'gasto' THEN CAST(monto AS DECIMAL) ELSE 0 END), 0) as gastos
+      FROM movimientos_contables
+      WHERE cuenta_bancaria_id IS NOT NULL
+        AND fecha >= ${sixMonthsAgo.toISOString()}
+      GROUP BY DATE_TRUNC('month', fecha)
+      ORDER BY DATE_TRUNC('month', fecha) ASC
+    `);
+
+    const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
     const ultimosMeses = [];
-    const now = new Date();
+    let currentBalanceAccumulator = saldoTotal;
 
-    for (let i = 2; i >= 0; i--) {
-      const fecha = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const firstDayOfMonth = new Date(fecha.getFullYear(), fecha.getMonth(), 1);
-      const lastDayOfMonth = new Date(fecha.getFullYear(), fecha.getMonth() + 1, 0, 23, 59, 59);
-
-      const ingresosDelMes = await db
-        .select({
-          total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)`,
-        })
-        .from(movimientosContables)
-        .where(
-          and(
-            eq(movimientosContables.tipo, "ingreso"),
-            sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`,
-            gte(movimientosContables.fecha, firstDayOfMonth.toISOString()),
-            lte(movimientosContables.fecha, lastDayOfMonth.toISOString()),
-          ),
-        );
-
-      const gastosDelMes = await db
-        .select({
-          total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)`,
-        })
-        .from(movimientosContables)
-        .where(
-          and(
-            eq(movimientosContables.tipo, "gasto"),
-            sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`,
-            gte(movimientosContables.fecha, firstDayOfMonth.toISOString()),
-            lte(movimientosContables.fecha, lastDayOfMonth.toISOString()),
-          ),
-        );
-
-      const monthNames = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-
-      ultimosMeses.push({
-        mes: monthNames[fecha.getMonth()],
-        ingresos: Number(ingresosDelMes[0]?.total || 0),
-        gastos: Number(gastosDelMes[0]?.total || 0),
+    // Convertimos a array para procesar hacia atrás el balance si es necesario, 
+    // pero aquí los tenemos en orden ascendente para el acumulador invertido
+    const rows = monthlyStatsRaw.rows as any[];
+    
+    // Mapeamos los meses que tenemos datos
+    const historyMap = new Map();
+    rows.forEach(row => {
+      const date = new Date(row.mes_fecha);
+      historyMap.set(date.getMonth() + "-" + date.getFullYear(), {
+        ingresos: Number(row.ingresos),
+        gastos: Number(row.gastos)
       });
+    });
+
+    // Generamos exactamente 6 meses
+    const now = new Date();
+    const monthsToProcess = [];
+    for (let i = 0; i < 6; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        monthsToProcess.push(d);
     }
+
+    // Procesamos para calcular los balances históricos
+    for (const d of monthsToProcess) {
+      const key = d.getMonth() + "-" + d.getFullYear();
+      const stat = historyMap.get(key) || { ingresos: 0, gastos: 0 };
+      
+      ultimosMeses.unshift({
+        mes: monthNames[d.getMonth()],
+        ingresos: stat.ingresos,
+        gastos: stat.gastos,
+        balance: Number(currentBalanceAccumulator.toFixed(2)),
+      });
+
+      // El balance del mes anterior es BalanceActual - (IngresosMesActual - GastosMesActual)
+      currentBalanceAccumulator -= (stat.ingresos - stat.gastos);
+    }
+
 
     return NextResponse.json({
       success: true,
@@ -78,8 +95,9 @@ export async function GET() {
         ultimosMeses,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching bank stats:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

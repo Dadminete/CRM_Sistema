@@ -18,13 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -36,13 +30,28 @@ interface Cliente {
   apellidos: string;
   cedula: string | null;
   telefono: string | null;
+  telefonoSecundario: string | null;
   email: string | null;
   direccion: string | null;
+  sectorBarrio: string | null;
+  ciudad: string | null;
+  provincia: string | null;
+  codigoPostal: string | null;
+  coordenadasLat: string | number | null;
+  coordenadasLng: string | number | null;
+  sexo: string | null;
   estado: string;
   tipoCliente: string;
   categoriaCliente: string;
   fotoUrl: string | null;
+  limiteCrediticio: string | number | null;
+  diasCredito: number | null;
+  descuentoPorcentaje: string | number | null;
+  notas: string | null;
+  contacto: string | null;
   createdAt: string;
+  montoTotal?: string | number;
+  montoMensual?: string | number;
 }
 
 interface Factura {
@@ -51,6 +60,12 @@ interface Factura {
   fechaFactura: string;
   total: string;
   estado: string;
+  montoPendiente?: string | number;
+  cobradoPor?: string;
+  subtotal?: string;
+  itbis?: string;
+  descuento?: string;
+  observaciones?: string;
 }
 
 interface Ticket {
@@ -62,6 +77,27 @@ interface Ticket {
   prioridad: string;
 }
 
+interface Subscription {
+  id: string;
+  numeroContrato: string;
+  servicio: string | null;
+  plan: string | null;
+  precioMensual: string;
+  estado: string;
+  fechaInicio: string;
+  fechaProximoPago: string | null;
+}
+
+interface HistoryItem {
+  id: string;
+  suscripcionId: string;
+  tipoCambio: string;
+  valorAnterior: string | null;
+  valorNuevo: string | null;
+  fecha: string;
+  usuario: string | null;
+}
+
 interface ClientDetailModalProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -70,17 +106,13 @@ interface ClientDetailModalProps {
     client: Cliente;
     invoices: Factura[];
     tickets: Ticket[];
+    subscriptions?: Subscription[];
+    history?: HistoryItem[];
   } | null;
   onEdit: (client: Cliente) => void;
 }
 
-export function ClientDetailModal({
-  isOpen,
-  onOpenChange,
-  isFetching,
-  detailClient,
-  onEdit,
-}: ClientDetailModalProps) {
+export function ClientDetailModal({ isOpen, onOpenChange, isFetching, detailClient, onEdit }: ClientDetailModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="flex h-[90vh] flex-col overflow-hidden rounded-xl border-none p-0 shadow-2xl sm:max-w-[480px]">
@@ -131,6 +163,15 @@ export function ClientDetailModal({
                       {detailClient.client.estado.toUpperCase()}
                     </Badge>
                   </div>
+                  <div className="mt-1">
+                    <p className="text-[10px] font-black tracking-widest text-white/60 uppercase">Monto Mensual</p>
+                    <p className="text-xl font-black text-white">
+                      RD${" "}
+                      {parseFloat(
+                        (detailClient.client.montoMensual ?? detailClient.client.montoTotal ?? "0").toString(),
+                      ).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -171,6 +212,12 @@ export function ClientDetailModal({
                     </Badge>
                   )}
                 </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  className="data-[state=active]:border-primary text-muted-foreground data-[state=active]:text-primary h-full gap-2 rounded-none px-0 font-bold shadow-none transition-none data-[state=active]:border-b-2 data-[state=active]:bg-transparent"
+                >
+                  <History className="h-4 w-4" /> Historial
+                </TabsTrigger>
               </TabsList>
 
               <div className="bg-muted/5 flex-1 overflow-y-auto p-6">
@@ -190,9 +237,7 @@ export function ClientDetailModal({
                               <Label className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                                 Cédula / RNC
                               </Label>
-                              <p className="text-foreground text-sm font-bold">
-                                {detailClient.client.cedula || "N/A"}
-                              </p>
+                              <p className="text-foreground text-sm font-bold">{detailClient.client.cedula || "N/A"}</p>
                             </div>
                             <div className="border-muted/50 flex items-center justify-between border-b py-1">
                               <Label className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
@@ -202,7 +247,7 @@ export function ClientDetailModal({
                                 {detailClient.client.categoriaCliente}
                               </p>
                             </div>
-                            <div className="flex items-center justify-between py-1">
+                            <div className="border-muted/50 flex items-center justify-between border-b py-1">
                               <Label className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
                                 Tipo Cliente
                               </Label>
@@ -210,8 +255,48 @@ export function ClientDetailModal({
                                 {detailClient.client.tipoCliente}
                               </p>
                             </div>
+                            <div className="flex items-center justify-between py-1">
+                              <Label className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">
+                                Límite Crédito
+                              </Label>
+                              <p className="text-foreground text-sm font-bold">
+                                RD${" "}
+                                {parseFloat(detailClient.client.limiteCrediticio?.toString() || "0").toLocaleString()}
+                              </p>
+                            </div>
                           </CardContent>
                         </Card>
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <h3 className="text-primary/60 flex items-center gap-2 px-1 text-[11px] font-black tracking-[0.2em] uppercase">
+                        Servicios Activos
+                      </h3>
+                      <div className="space-y-2">
+                        {detailClient.subscriptions?.map((sub) => (
+                          <div
+                            key={sub.id}
+                            className="bg-background ring-border/50 flex items-center justify-between rounded-xl p-3 shadow-sm ring-1"
+                          >
+                            <div className="flex flex-col">
+                              <span className="text-foreground text-xs leading-none font-bold">
+                                {sub.servicio || sub.plan || "Servicio General"}
+                              </span>
+                              <span className="text-muted-foreground mt-1 font-mono text-[10px]">
+                                {sub.numeroContrato}
+                              </span>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-primary text-xs font-black">
+                                RD$ {parseFloat(sub.precioMensual).toLocaleString()}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                        {(!detailClient.subscriptions || detailClient.subscriptions.length === 0) && (
+                          <p className="text-muted-foreground px-1 text-xs italic">No hay servicios registrados.</p>
+                        )}
                       </div>
                     </div>
 
@@ -233,6 +318,21 @@ export function ClientDetailModal({
                             </p>
                           </div>
                         </div>
+                        {detailClient.client.telefonoSecundario && (
+                          <div className="bg-background ring-border/50 flex items-center gap-4 rounded-2xl p-4 shadow-sm ring-1">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-500/10 text-cyan-600">
+                              <Phone className="h-5 w-5" />
+                            </div>
+                            <div>
+                              <Label className="text-muted-foreground text-[10px] font-black tracking-tighter uppercase">
+                                Teléfono Secundario
+                              </Label>
+                              <p className="text-foreground text-sm font-bold">
+                                {detailClient.client.telefonoSecundario}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                         <div className="bg-background ring-border/50 flex items-center gap-4 rounded-2xl p-4 shadow-sm ring-1">
                           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600">
                             <Mail className="h-5 w-5" />
@@ -298,16 +398,16 @@ export function ClientDetailModal({
                       <Table>
                         <TableHeader className="bg-muted/30">
                           <TableRow>
-                            <TableHead className="text-muted-foreground text-xs font-bold uppercase">
-                              Factura
-                            </TableHead>
+                            <TableHead className="text-muted-foreground text-xs font-bold uppercase">Factura</TableHead>
                             <TableHead className="text-muted-foreground text-xs font-bold uppercase">Fecha</TableHead>
+                            <TableHead className="text-muted-foreground text-xs font-bold uppercase">Importe</TableHead>
                             <TableHead className="text-muted-foreground text-xs font-bold uppercase">
-                              Importe
+                              Pendiente
                             </TableHead>
                             <TableHead className="text-muted-foreground text-xs font-bold uppercase">
-                              Estado
+                              Cobrado por
                             </TableHead>
+                            <TableHead className="text-muted-foreground text-xs font-bold uppercase">Estado</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -322,14 +422,27 @@ export function ClientDetailModal({
                               <TableCell className="text-foreground text-xs font-bold">
                                 RD$ {parseFloat(inv.total).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                               </TableCell>
+                              <TableCell className="text-foreground text-xs font-bold">
+                                RD${" "}
+                                {parseFloat(inv.montoPendiente || "0").toLocaleString(undefined, {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </TableCell>
+                              <TableCell className="text-foreground text-xs font-medium">
+                                <span className="font-bold text-blue-600">
+                                  {inv.cobradoPor ? inv.cobradoPor.toUpperCase() : "—"}
+                                </span>
+                              </TableCell>
                               <TableCell>
                                 <Badge
                                   className={`h-5 border-none py-0 text-[9px] font-bold shadow-none ${
-                                    inv.estado === "paga"
+                                    inv.estado === "paga" || inv.estado === "pagada"
                                       ? "bg-emerald-500/10 text-emerald-600"
                                       : inv.estado === "pendiente"
                                         ? "bg-red-500/10 text-red-600"
-                                        : "bg-gray-500/10 text-gray-600"
+                                        : inv.estado === "parcial" || inv.estado === "pago parcial"
+                                          ? "bg-orange-500/10 text-orange-600"
+                                          : "bg-gray-500/10 text-gray-600"
                                   }`}
                                 >
                                   {inv.estado.toUpperCase()}
@@ -409,6 +522,57 @@ export function ClientDetailModal({
                             </div>
                           </CardContent>
                         </Card>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="history" className="animate-in fade-in slide-in-from-bottom-2 mt-0 duration-300">
+                  {!detailClient.history || detailClient.history.length === 0 ? (
+                    <div className="text-muted-foreground/50 flex flex-col items-center justify-center gap-4 py-20">
+                      <div className="bg-muted/20 rounded-full p-4">
+                        <History className="h-12 w-12" />
+                      </div>
+                      <p className="text-sm font-bold">No se registran cambios de servicios.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {detailClient.history.map((h) => (
+                        <div
+                          key={h.id}
+                          className="bg-background ring-border/60 flex flex-col gap-2 rounded-xl p-4 shadow-sm ring-1"
+                        >
+                          <div className="flex items-center justify-between">
+                            <Badge className="bg-primary/10 text-primary border-none text-[9px] font-black tracking-widest uppercase">
+                              {h.tipoCambio}
+                            </Badge>
+                            <span className="text-muted-foreground text-[10px] font-bold">
+                              {new Date(h.fecha).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-muted-foreground text-[9px] font-bold tracking-wider uppercase">
+                                Anterior
+                              </p>
+                              <p className="truncate text-xs font-bold text-red-600 line-through">
+                                {h.valorAnterior || "---"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-muted-foreground text-[9px] font-bold tracking-wider uppercase">
+                                Nuevo
+                              </p>
+                              <p className="truncate text-xs font-bold text-emerald-600">{h.valorNuevo || "---"}</p>
+                            </div>
+                          </div>
+                          <div className="mt-1 border-t pt-2">
+                            <p className="text-muted-foreground text-[10px] italic">
+                              Modificado por:{" "}
+                              <span className="text-foreground font-bold not-italic">{h.usuario || "Sistema"}</span>
+                            </p>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}

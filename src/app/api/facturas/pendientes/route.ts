@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { facturasClientes, cuentasPorCobrar, clientes, suscripciones, contratos } from "@/lib/db/schema";
 import { eq, and, or, sql, asc, gte, lte } from "drizzle-orm";
+import { jsonResponse } from "@/lib/serializers";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,10 @@ export async function GET(req: Request) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const billingDay = searchParams.get("billingDay");
+    const clienteId = searchParams.get("clienteId");
 
     console.log('[PENDIENTES] Fetching pending invoices...');
-    console.log('[PENDIENTES] Filters:', { startDate, endDate, billingDay });
+    console.log('[PENDIENTES] Filters:', { startDate, endDate, billingDay, clienteId });
 
     const subquerySuscripciones = db
       .select({
@@ -28,6 +30,7 @@ export async function GET(req: Request) {
       eq(facturasClientes.estado, "pendiente"),
       eq(facturasClientes.estado, "parcial"),
       eq(facturasClientes.estado, "pago parcial"),
+      eq(facturasClientes.estado, "adelantado"),
     );
 
     if (startDate && endDate) {
@@ -46,6 +49,10 @@ export async function GET(req: Request) {
       conditions = and(conditions, eq(subquerySuscripciones.diaFacturacion, parseInt(billingDay)));
     }
 
+    if (clienteId) {
+      conditions = and(conditions, eq(clientes.id, clienteId));
+    }
+
     const pendientes = await db
       .select({
         id: facturasClientes.id,
@@ -61,6 +68,7 @@ export async function GET(req: Request) {
         clienteEmail: clientes.email,
         clienteTelefono: clientes.telefono,
         diaFacturacion: subquerySuscripciones.diaFacturacion,
+        fotoUrl: clientes.fotoUrl,
       })
       .from(cuentasPorCobrar)
       .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
@@ -74,7 +82,7 @@ export async function GET(req: Request) {
       console.log('[PENDIENTES] First 3:', pendientes.slice(0, 3).map(f => f.numeroFactura));
     }
 
-    return NextResponse.json({
+    return jsonResponse({
       success: true,
       data: pendientes,
     });

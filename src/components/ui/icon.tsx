@@ -1,21 +1,26 @@
-import { lazy, Suspense } from 'react';
+import React, { lazy, Suspense } from 'react';
 import type { LucideProps } from 'lucide-react';
-
-// Lazy load de iconos para reducir el bundle inicial
-const iconLoader = (name: string) =>
-  lazy(() =>
-    import('lucide-react').then((module) => ({
-      default: module[name as keyof typeof module] as React.ComponentType<LucideProps>,
-    }))
-  );
 
 interface IconProps extends LucideProps {
   name: string;
 }
 
+const iconCache: Record<string, React.LazyExoticComponent<React.ComponentType<LucideProps>>> = {};
+
 export function Icon({ name, ...props }: IconProps) {
-  const IconComponent = iconLoader(name);
-  
+  if (!name) return null;
+
+  // Use cached lazy component or create new one
+  if (!iconCache[name]) {
+    iconCache[name] = lazy(() =>
+      import('lucide-react').then((module) => ({
+        default: module[name as keyof typeof module] as React.ComponentType<LucideProps>,
+      }))
+    );
+  }
+
+  const IconComponent = iconCache[name];
+
   return (
     <Suspense fallback={<div className={props.className} style={{ width: props.size || 24, height: props.size || 24 }} />}>
       <IconComponent {...props} />

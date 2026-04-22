@@ -1,15 +1,19 @@
 "use client";
 
 import * as React from "react";
+
 import { Search, Calendar as CalendarIcon, X } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { useDataTableInstance } from "@/hooks/use-data-table-instance";
+import { Loader2 } from "lucide-react";
+
 import { DataTable as DataTableBase } from "@/components/data-table/data-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
-import { columns } from "./columns";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useDataTableInstance } from "@/hooks/use-data-table-instance";
+
+import { createColumns } from "./columns";
 import { Invoice } from "./schema";
 
 interface DataTableProps {
@@ -19,9 +23,35 @@ interface DataTableProps {
   startDate: string;
   endDate: string;
   billingDay: string;
+  onInvoiceChanged?: () => void;
 }
 
-export function DataTable({ data, onDateChange, onBillingDayChange, startDate, endDate, billingDay }: DataTableProps) {
+export function DataTable({
+  data,
+  onDateChange,
+  onBillingDayChange,
+  startDate,
+  endDate,
+  billingDay,
+  onInvoiceChanged,
+}: DataTableProps) {
+  const [diasDisponibles, setDiasDisponibles] = React.useState<number[]>([]);
+  const [loadingDias, setLoadingDias] = React.useState(true);
+
+  React.useEffect(() => {
+    fetch("/api/facturas/dias-facturacion")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setDiasDisponibles(res.data);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDias(false));
+  }, []);
+
+  const columns = React.useMemo(() => createColumns({ onInvoiceChanged }), [onInvoiceChanged]);
+
   const table = useDataTableInstance({
     data,
     columns,
@@ -70,9 +100,10 @@ export function DataTable({ data, onDateChange, onBillingDayChange, startDate, e
               className="border-input bg-background ring-offset-background placeholder:text-muted-foreground focus-visible:ring-ring flex h-10 w-full rounded-md border px-3 py-2 text-sm shadow-sm file:border-0 file:bg-transparent file:text-sm file:font-medium focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
               value={billingDay}
               onChange={(e) => onBillingDayChange(e.target.value)}
+              disabled={loadingDias}
             >
-              <option value="">Todos</option>
-              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+              <option value="">{loadingDias ? "Cargando…" : "Todos"}</option>
+              {diasDisponibles.map((day) => (
                 <option key={day} value={day.toString()}>
                   Día {day}
                 </option>

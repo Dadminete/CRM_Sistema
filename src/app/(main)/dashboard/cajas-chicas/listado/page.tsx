@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
+
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   History,
   Search,
@@ -21,17 +21,11 @@ import {
   ChevronRight,
   Save,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -40,11 +34,19 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 export default function HistorialSesionesPage() {
@@ -317,7 +319,7 @@ export default function HistorialSesionesPage() {
                           <div className="flex flex-col">
                             <span className="text-foreground text-sm font-bold">{formatDate(s.fechaApertura)}</span>
                             <span className="text-[11px] font-black text-emerald-600">
-                              +{formatCurrency(s.montoApertura)}
+                              {formatCurrency(s.montoApertura)}
                             </span>
                           </div>
                         </TableCell>

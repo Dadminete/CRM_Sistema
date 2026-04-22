@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ventasPapeleria, movimientosContables, categoriasCuentas, cajas, sesionesCaja } from "@/lib/db/schema";
+import { movimientosContables, cajas, sesionesCaja } from "@/lib/db/schema";
 import { and, gte, lte, sql, eq, desc } from "drizzle-orm";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
@@ -24,32 +26,30 @@ export async function GET() {
       estado = ultimaSesion[0]?.estado || "cerrada";
     }
 
-    // Obtener ventas de papelería del mes actual
-    const ventasDelMes = await db
-      .select({
-        total: sql<number>`COALESCE(SUM(CAST(${ventasPapeleria.total} AS DECIMAL)), 0)`,
-      })
-      .from(ventasPapeleria)
-      .where(
-        and(
-          gte(ventasPapeleria.fechaVenta, firstDayOfMonth.toISOString()),
-          lte(ventasPapeleria.fechaVenta, lastDayOfMonth.toISOString()),
-        ),
-      );
+    const boxId = cajaPapeleria[0]?.id;
 
-    const totalVentas = Number(ventasDelMes[0]?.total || 0);
+    let totalVentas = 0;
+    if (boxId) {
+      const ventasDelMes = await db
+        .select({
+          total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)`,
+        })
+        .from(movimientosContables)
+        .where(
+          and(
+            eq(movimientosContables.cajaId, boxId),
+            sql`(${movimientosContables.descripcion} ILIKE 'Venta de papelería%' OR ${movimientosContables.descripcion} ILIKE 'Venta de papeleria%')`,
+            gte(movimientosContables.fecha, firstDayOfMonth.toISOString()),
+            lte(movimientosContables.fecha, lastDayOfMonth.toISOString()),
+          ),
+        );
 
-    // Obtener gastos relacionados con papelería del mes actual
-    const categoriaPapeleria = await db
-      .select({ id: categoriasCuentas.id })
-      .from(categoriasCuentas)
-      .where(sql`LOWER(${categoriasCuentas.nombre}) LIKE '%papeleria%'`);
+      totalVentas = Number(ventasDelMes[0]?.total || 0);
+    }
 
     let totalGastos = 0;
 
-    if (categoriaPapeleria.length > 0) {
-      const categoriaIds = categoriaPapeleria.map((c) => c.id);
-
+    if (boxId) {
       const gastosDelMes = await db
         .select({
           total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)`,
@@ -57,8 +57,10 @@ export async function GET() {
         .from(movimientosContables)
         .where(
           and(
-            eq(movimientosContables.tipo, "gasto"),
-            sql`${movimientosContables.categoriaId} IN ${categoriaIds}`,
+            eq(movimientosContables.cajaId, boxId),
+            sql`${movimientosContables.tipo} IN ('gasto', 'egreso', 'traspaso')`,
+            sql`${movimientosContables.descripcion} NOT LIKE '%Ajuste%'`,
+            sql`${movimientosContables.descripcion} NOT LIKE '%REGULARIZACION%'`,
             gte(movimientosContables.fecha, firstDayOfMonth.toISOString()),
             lte(movimientosContables.fecha, lastDayOfMonth.toISOString()),
           ),
@@ -67,59 +69,52 @@ export async function GET() {
       totalGastos = Number(gastosDelMes[0]?.total || 0);
     }
 
-    // Obtener datos de los últimos 6 días
+    // 3. Obtener historial de los últimos 15 días en UNA SOLA consulta (Optimizado)
+    const fifteenDaysAgo = new Date();
+    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 14);
+    fifteenDaysAgo.setHours(0, 0, 0, 0);
+
+    const historyRaw = await db.execute(sql`
+      SELECT 
+        TO_CHAR(DATE_TRUNC('day', fecha AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santo_Domingo'), 'DD/MM') as dia,
+        COALESCE(SUM(CASE WHEN (descripcion ILIKE 'Venta de papelería%' OR descripcion ILIKE 'Venta de papeleria%') THEN CAST(monto AS DECIMAL) ELSE 0 END), 0) as ventas,
+        COALESCE(SUM(CASE WHEN tipo IN ('gasto', 'egreso', 'traspaso') THEN CAST(monto AS DECIMAL) ELSE 0 END), 0) as gastos
+      FROM movimientos_contables
+      WHERE caja_id = ${boxId}
+        AND fecha >= ${fifteenDaysAgo.toISOString()}
+      GROUP BY DATE_TRUNC('day', fecha AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santo_Domingo')
+      ORDER BY DATE_TRUNC('day', fecha AT TIME ZONE 'UTC' AT TIME ZONE 'America/Santo_Domingo') ASC
+    `);
+
+    const historyMap = new Map();
+    (historyRaw.rows || []).forEach((row: any) => {
+      historyMap.set(row.dia, {
+        ventas: Number(row.ventas),
+        gastos: Number(row.gastos)
+      });
+    });
+
     const ultimosDias = [];
-    for (let i = 5; i >= 0; i--) {
-      const fecha = new Date();
-      fecha.setDate(fecha.getDate() - i);
-      const startOfDay = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 0, 0, 0);
-      const endOfDay = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate(), 23, 59, 59);
-
-      // Obtener ventas del día
-      const ventasDelDia = await db
-        .select({
-          total: sql<number>`COALESCE(SUM(CAST(${ventasPapeleria.total} AS DECIMAL)), 0)`,
-        })
-        .from(ventasPapeleria)
-        .where(
-          and(
-            gte(ventasPapeleria.fechaVenta, startOfDay.toISOString()),
-            lte(ventasPapeleria.fechaVenta, endOfDay.toISOString()),
-          ),
-        );
-
-      // Obtener gastos del día
-      let gastosDelDia = 0;
-      if (categoriaPapeleria.length > 0) {
-        const categoriaIds = categoriaPapeleria.map((c) => c.id);
-
-        const gastosResult = await db
-          .select({
-            total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)`,
-          })
-          .from(movimientosContables)
-          .where(
-            and(
-              eq(movimientosContables.tipo, "gasto"),
-              sql`${movimientosContables.categoriaId} IN ${categoriaIds}`,
-              gte(movimientosContables.fecha, startOfDay.toISOString()),
-              lte(movimientosContables.fecha, endOfDay.toISOString()),
-            ),
-          );
-
-        gastosDelDia = Number(gastosResult[0]?.total || 0);
-      }
-
+    for (let i = 14; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = `${d.getDate()}/${d.getMonth() + 1}`;
+      const stat = historyMap.get(key.padStart(5, '0').replace(/^0/, '')) || 
+                 historyMap.get(String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0')) ||
+                 { ventas: 0, gastos: 0 };
+      
       ultimosDias.push({
-        fecha: `${fecha.getDate()}/${fecha.getMonth() + 1}`,
-        ventas: Number(ventasDelDia[0]?.total || 0),
-        gastos: gastosDelDia,
+        fecha: key,
+        ventas: stat.ventas,
+        gastos: stat.gastos,
       });
     }
+
 
     return NextResponse.json({
       success: true,
       data: {
+        balanceActual: Number(cajaPapeleria[0]?.saldoActual || 0),
         ventasDelMes: totalVentas,
         gastosDelMes: totalGastos,
         ultimosDias,

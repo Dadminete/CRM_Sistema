@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, lazy, Suspense } from "react";
+
 import {
   Users,
   Search,
@@ -17,20 +18,22 @@ import {
   UserMinus,
   Info,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 // Lazy load de modales para reducir bundle inicial
-const ClientDetailModal = lazy(() => 
-  import("./_components/client-detail-modal").then(mod => ({ default: mod.ClientDetailModal }))
+const ClientDetailModal = lazy(() =>
+  import("./_components/client-detail-modal").then((mod) => ({ default: mod.ClientDetailModal })),
 );
-const ClientEditModal = lazy(() => 
-  import("./_components/client-edit-modal").then(mod => ({ default: mod.ClientEditModal }))
+const ClientEditModal = lazy(() =>
+  import("./_components/client-edit-modal").then((mod) => ({ default: mod.ClientEditModal })),
 );
 
 interface Cliente {
@@ -40,13 +43,28 @@ interface Cliente {
   apellidos: string;
   cedula: string | null;
   telefono: string | null;
+  telefonoSecundario: string | null;
   email: string | null;
   direccion: string | null;
+  sectorBarrio: string | null;
+  ciudad: string | null;
+  provincia: string | null;
+  codigoPostal: string | null;
+  coordenadasLat: string | number | null;
+  coordenadasLng: string | number | null;
+  sexo: string | null;
   estado: string;
   tipoCliente: string;
   categoriaCliente: string;
   fotoUrl: string | null;
+  limiteCrediticio: string | number | null;
+  diasCredito: number | null;
+  descuentoPorcentaje: string | number | null;
+  notas: string | null;
+  contacto: string | null;
   createdAt: string;
+  tieneSuscripcionActiva?: boolean;
+  montoMensual?: string | number;
 }
 
 interface Factura {
@@ -71,8 +89,9 @@ const ITEMS_PER_PAGE = 10;
 export default function ClientesListPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0 });
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("activo");
   const [currentPage, setCurrentPage] = useState(1);
 
   // Modals
@@ -89,24 +108,48 @@ export default function ClientesListPage() {
   const [isFetchingDetail, setIsFetchingDetail] = useState(false);
 
   const [formData, setFormData] = useState({
+    codigoCliente: "",
     nombre: "",
     apellidos: "",
-    email: "",
+    cedula: "",
     telefono: "",
+    celular: "",
+    email: "",
     direccion: "",
+    tipoCliente: "residencial",
+    categoria: "NUEVO",
+    sector: "",
+    ciudad: "",
+    provincia: "",
+    codigoPostal: "",
+    coordenadas: "",
+    limiteCredito: "0",
+    diasCredito: "0",
+    descuentoCliente: "0",
+    sexo: "",
+    ocupacion: "",
+    nombreEmpresa: "",
+    referenciaPersonal: "",
+    observaciones: "",
+    activo: true,
+    aceptaPromociones: false,
+    fotoUrl: "",
     estado: "activo",
   });
 
-  const fetchClientes = async () => {
+  const fetchClientes = async (search = "") => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/clientes");
+      // Pedimos un límite mayor o dejamos que el servidor maneje la búsqueda
+      const res = await fetch(`/api/clientes?limit=1000${search ? `&search=${encodeURIComponent(search)}` : ""}`);
       const data = await res.json();
       if (data.error) {
         toast.error("Error: " + data.error);
         return;
       }
-      setClientes(data);
+      // La API devuelve { success, data: { data: [...], pagination } }
+      const clientesArray = data.data?.data ?? data.data ?? data;
+      setClientes(Array.isArray(clientesArray) ? clientesArray : []);
     } catch (error) {
       console.error(error);
       toast.error("Error de conexión");
@@ -147,7 +190,12 @@ export default function ClientesListPage() {
       const data = await res.json();
       if (data.success) {
         toast.success(`Cliente ${nuevoEstado === "activo" ? "habilitado" : "inhabilitado"}`);
-        setClientes((prev) => prev.map((c) => (c.id === cliente.id ? { ...c, estado: nuevoEstado } : c)));
+        setClientes((prev) =>
+          prev.map((c) =>
+            c.id === cliente.id ? { ...c, estado: nuevoEstado, tieneSuscripcionActiva: nuevoEstado === "activo" } : c,
+          ),
+        );
+        fetchStats();
       }
     } catch (error) {
       toast.error("Error al actualizar estado");
@@ -168,17 +216,46 @@ export default function ClientesListPage() {
       toast.error("Error al eliminar cliente");
     }
   };
-
-  const handleEdit = (cliente: Cliente, e?: React.MouseEvent) => {
+  const handleEdit = (cliente: any, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingCliente(cliente);
+
+    // Normalize keys from snake_case (raw API) or camelCase (mapped)
+    const getVal = (keyCamel: string, keySnake: string) => cliente[keyCamel] ?? cliente[keySnake] ?? "";
+
     setFormData({
-      nombre: cliente.nombre,
-      apellidos: cliente.apellidos,
-      email: cliente.email || "",
-      telefono: cliente.telefono || "",
-      direccion: cliente.direccion || "",
-      estado: cliente.estado,
+      codigoCliente: getVal("codigoCliente", "codigo_cliente"),
+      nombre: getVal("nombre", "nombre"),
+      apellidos: getVal("apellidos", "apellidos"),
+      cedula: getVal("cedula", "cedula"),
+      telefono: getVal("telefono", "telefono"),
+      celular: getVal("telefonoSecundario", "telefono_secundario"),
+      email: getVal("email", "email"),
+      direccion: getVal("direccion", "direccion"),
+      tipoCliente: getVal("tipoCliente", "tipo_cliente") || "residencial",
+      categoria: getVal("categoriaCliente", "categoria_cliente") || "NUEVO",
+      sector: getVal("sectorBarrio", "sector_barrio"),
+      ciudad: getVal("ciudad", "ciudad"),
+      provincia: getVal("provincia", "provincia"),
+      codigoPostal: getVal("codigoPostal", "codigo_postal"),
+      coordenadas:
+        cliente.coordenadas_lat && cliente.coordenadas_lng
+          ? `${cliente.coordenadas_lat},${cliente.coordenadas_lng}`
+          : cliente.coordenadasLat && cliente.coordenadasLng
+            ? `${cliente.coordenadasLat},${cliente.coordenadasLng}`
+            : "",
+      limiteCredito: (cliente.limiteCrediticio ?? cliente.limite_crediticio)?.toString() || "0",
+      diasCredito: (cliente.diasCredito ?? cliente.dias_credito)?.toString() || "0",
+      descuentoCliente: (cliente.descuentoPorcentaje ?? cliente.descuento_porcentaje)?.toString() || "0",
+      sexo: cliente.sexo === "MASCULINO" ? "M" : cliente.sexo === "FEMENINO" ? "F" : cliente.sexo || "",
+      ocupacion: "",
+      nombreEmpresa: "",
+      referenciaPersonal: getVal("contacto", "contacto"),
+      observaciones: getVal("notas", "notas"),
+      activo: (cliente.estado || cliente.estado) === "activo",
+      aceptaPromociones: false,
+      fotoUrl: getVal("fotoUrl", "foto_url"),
+      estado: getVal("estado", "estado") || "activo",
     });
     setIsEditModalOpen(true);
   };
@@ -186,11 +263,35 @@ export default function ClientesListPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+
+    const payload = {
+      nombre: formData.nombre,
+      apellidos: formData.apellidos,
+      email: formData.email,
+      telefono: formData.telefono,
+      telefonoSecundario: formData.celular,
+      cedula: formData.cedula,
+      direccion: formData.direccion,
+      sectorBarrio: formData.sector,
+      ciudad: formData.ciudad,
+      provincia: formData.provincia,
+      codigoPostal: formData.codigoPostal,
+      tipoCliente: formData.tipoCliente,
+      categoriaCliente: formData.categoria,
+      sexo: formData.sexo === "M" ? "MASCULINO" : formData.sexo === "F" ? "FEMENINO" : null,
+      fotoUrl: formData.fotoUrl,
+      notas: formData.observaciones,
+      estado: formData.activo ? "activo" : "inactivo",
+      limiteCrediticio: formData.limiteCredito || "0",
+      diasCredito: parseInt(formData.diasCredito) || 0,
+      descuentoPorcentaje: formData.descuentoCliente || "0",
+    };
+
     try {
       const res = await fetch(`/api/clientes/${editingCliente?.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (data.success) {
@@ -206,46 +307,61 @@ export default function ClientesListPage() {
   };
 
   const handleEditFromDetail = (client: Cliente) => {
-    setEditingCliente(client);
-    setFormData({
-      nombre: client.nombre,
-      apellidos: client.apellidos,
-      email: client.email || "",
-      telefono: client.telefono || "",
-      direccion: client.direccion || "",
-      estado: client.estado,
-    });
-    setIsEditModalOpen(true);
+    handleEdit(client);
+  };
+
+  const fetchStats = async () => {
+    try {
+      const res = await fetch("/api/clientes/stats");
+      const data = await res.json();
+      if (data.success && data.data) {
+        setStats(data.data);
+      }
+    } catch (error) {
+      console.error("Error fetching stats:", error);
+    }
   };
 
   useEffect(() => {
-    fetchClientes();
+    const timer = setTimeout(() => {
+      fetchClientes(searchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    fetchStats();
   }, []);
+
+  const normalizeToLower = (value: unknown) =>
+    value === null || value === undefined ? "" : String(value).toLowerCase();
 
   const filteredClientes = clientes
     .filter((c) => {
+      const normalizedSearch = searchTerm.toLowerCase();
       const matchesSearch =
-        c.nombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.apellidos.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.codigoCliente.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (c.email?.toLowerCase() || "").includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === "all" || c.estado === statusFilter;
-      return matchesSearch && matchesStatus;
+        normalizeToLower(c.nombre).includes(normalizedSearch) ||
+        normalizeToLower(c.apellidos).includes(normalizedSearch) ||
+        normalizeToLower(c.codigoCliente).includes(normalizedSearch) ||
+        normalizeToLower(c.email).includes(normalizedSearch);
+
+      const isActivo = c.tieneSuscripcionActiva || c.estado === "activo";
+      const matchesStatus =
+        statusFilter === "all" || (statusFilter === "activo" && isActivo) || (statusFilter === "inactivo" && !isActivo);
+
+      return matchesStatus;
     })
     .sort((a, b) => {
-      const nameA = `${a.nombre} ${a.apellidos}`.toLowerCase();
-      const nameB = `${b.nombre} ${b.apellidos}`.toLowerCase();
+      const nameA = `${a.nombre ?? ""} ${a.apellidos ?? ""}`.toLowerCase();
+      const nameB = `${b.nombre ?? ""} ${b.apellidos ?? ""}`.toLowerCase();
       return nameA.localeCompare(nameB);
     });
 
   const totalPages = Math.ceil(filteredClientes.length / ITEMS_PER_PAGE);
   const paginatedItems = filteredClientes.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const stats = {
-    total: clientes.filter((c) => c.estado === "activo").length,
-    active: clientes.filter((c) => c.estado === "activo").length,
-    inactive: clientes.filter((c) => ["inactivo", "cancelado", "suspendido"].includes(c.estado)).length,
-  };
+  // Stats are now fetched from /api/clientes/stats based on suscripciones
 
   return (
     <div className="animate-in fade-in flex flex-col gap-6 p-2 duration-500">
@@ -288,13 +404,13 @@ export default function ClientesListPage() {
             <div className="text-3xl font-bold text-emerald-600">{stats.active}</div>
           </CardContent>
         </Card>
-        <Card className="border-l-4 border-l-gray-400">
+        <Card className="border-l-4 border-l-red-500">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-muted-foreground text-xs font-bold uppercase">Inactivos</CardTitle>
-            <UserMinus className="h-4 w-4 text-gray-500" />
+            <UserMinus className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-600">{stats.inactive}</div>
+            <div className="text-3xl font-bold text-red-600">{stats.inactive}</div>
           </CardContent>
         </Card>
       </div>
@@ -357,6 +473,7 @@ export default function ClientesListPage() {
                 <TableHead className="w-[220px] font-bold">Cliente</TableHead>
                 <TableHead className="w-[280px] font-bold">Contacto</TableHead>
                 <TableHead className="font-bold">Ubicación</TableHead>
+                <TableHead className="w-[120px] font-bold">Monto Mensual</TableHead>
                 <TableHead className="w-[100px] font-bold">Estado</TableHead>
                 <TableHead className="w-[160px] text-center font-bold">Acciones</TableHead>
               </TableRow>
@@ -364,13 +481,13 @@ export default function ClientesListPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-20 text-center">
+                  <TableCell colSpan={6} className="text-muted-foreground py-20 text-center">
                     Cargando información...
                   </TableCell>
                 </TableRow>
               ) : paginatedItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-muted-foreground py-20 text-center italic">
+                  <TableCell colSpan={6} className="text-muted-foreground py-20 text-center italic">
                     No se encontraron resultados.
                   </TableCell>
                 </TableRow>
@@ -382,13 +499,22 @@ export default function ClientesListPage() {
                     onClick={() => fetchClientDetail(c.id)}
                   >
                     <TableCell className="px-4 py-3">
-                      <div className="flex flex-col">
-                        <span className="text-foreground text-sm font-bold">
-                          {c.nombre} {c.apellidos}
-                        </span>
-                        <span className="text-primary/70 font-mono text-[10px] font-bold tracking-tight uppercase">
-                          {c.codigoCliente}
-                        </span>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="border-primary/10 h-10 w-10 border shadow-sm">
+                          <AvatarImage src={c.fotoUrl || ""} alt={c.nombre} className="object-cover" />
+                          <AvatarFallback className="bg-primary/5 text-primary font-bold">
+                            {c.nombre?.charAt(0)}
+                            {c.apellidos?.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col">
+                          <span className="text-foreground text-sm font-bold">
+                            {c.nombre} {c.apellidos}
+                          </span>
+                          <span className="text-primary/70 font-mono text-[10px] font-bold tracking-tight uppercase">
+                            {c.codigoCliente}
+                          </span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3">
@@ -407,7 +533,21 @@ export default function ClientesListPage() {
                       </div>
                     </TableCell>
                     <TableCell className="px-4 py-3">
-                      {c.estado === "activo" ? (
+                      <div className="flex flex-col">
+                        <span className="text-foreground text-sm font-bold">
+                          RD${" "}
+                          {parseFloat((c.montoMensual ?? "0").toString()).toLocaleString(undefined, {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                        <span className="text-muted-foreground text-[10px] font-medium tracking-tighter uppercase">
+                          Monto Mensual
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-4 py-3">
+                      {c.tieneSuscripcionActiva || c.estado === "activo" ? (
                         <Badge className="h-5 border-emerald-200/50 bg-emerald-500/10 text-[10px] text-emerald-600 shadow-none transition-none hover:bg-emerald-500/20">
                           Activo
                         </Badge>

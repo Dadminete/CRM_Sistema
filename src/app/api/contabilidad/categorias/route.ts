@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { categoriasCuentas } from "@/lib/db/schema";
 import { eq, asc } from "drizzle-orm";
+import { jsonResponse } from '@/lib/serializers';
 
 export async function GET(req: Request) {
   try {
@@ -18,17 +19,17 @@ export async function GET(req: Request) {
         where: eq(categoriasCuentas.tipo, type),
         orderBy: [asc(categoriasCuentas.codigo)],
       });
-      return NextResponse.json({ success: true, data: allCategories });
+      return jsonResponse({ success: true, data: allCategories });
     }
 
     const allCategories = await db.query.categoriasCuentas.findMany({
       orderBy: [asc(categoriasCuentas.codigo)],
     });
 
-    return NextResponse.json({ success: true, data: allCategories });
+    return jsonResponse({ success: true, data: allCategories });
   } catch (error: any) {
     console.error("Error fetching account categories:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
 }
 
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
 
     // Basic validation
     if (!codigo || !nombre || !tipo) {
-      return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
+      return jsonResponse({ success: false, error: "Missing required fields" }, { status: 400 });
     }
 
     const newCategory = await db
@@ -55,10 +56,10 @@ export async function POST(req: Request) {
       })
       .returning();
 
-    return NextResponse.json({ success: true, data: newCategory[0] });
+    return jsonResponse({ success: true, data: newCategory[0] });
   } catch (error: any) {
     console.error("Error creating account category:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
 }
 
@@ -68,7 +69,7 @@ export async function PUT(req: Request) {
     const { id, codigo, nombre, tipo, padreId, nivel, esDetalle, activa } = body;
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "Missing ID" }, { status: 400 });
+      return jsonResponse({ success: false, error: "Missing ID" }, { status: 400 });
     }
 
     const updatedCategory = await db
@@ -86,10 +87,10 @@ export async function PUT(req: Request) {
       .where(eq(categoriasCuentas.id, id))
       .returning();
 
-    return NextResponse.json({ success: true, data: updatedCategory[0] });
+    return jsonResponse({ success: true, data: updatedCategory[0] });
   } catch (error: any) {
     console.error("Error updating account category:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
 }
 
@@ -99,7 +100,7 @@ export async function DELETE(req: Request) {
     const id = searchParams.get("id");
 
     if (!id) {
-      return NextResponse.json({ success: false, error: "Missing ID" }, { status: 400 });
+      return jsonResponse({ success: false, error: "Missing ID" }, { status: 400 });
     }
 
     // Check for children before deleting?
@@ -109,9 +110,9 @@ export async function DELETE(req: Request) {
 
     await db.delete(categoriasCuentas).where(eq(categoriasCuentas.id, id));
 
-    return NextResponse.json({ success: true, message: "Category deleted" });
+    return jsonResponse({ success: true, message: "Category deleted" });
   } catch (error: any) {
     console.error("Error deleting account category:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
 }

@@ -1,28 +1,38 @@
 "use client";
 
+import { useState, useEffect } from "react";
+
 import { Download } from "lucide-react";
+import z from "zod";
 
 import { DataTable } from "@/components/data-table/data-table";
 import { DataTablePagination } from "@/components/data-table/data-table-pagination";
 import { DataTableViewOptions } from "@/components/data-table/data-table-view-options";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription, CardAction } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { useDataTableInstance } from "@/hooks/use-data-table-instance";
 
-import { useState, useEffect } from "react";
 import { recentMovementsColumns } from "./columns.crm";
 import { recentMovementSchema } from "./schema";
-import z from "zod";
 
 export function TableCards() {
   const [data, setData] = useState<z.infer<typeof recentMovementSchema>[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchData() {
+    async function fetchData(isInitial = false) {
       try {
-        const response = await fetch("/api/recent-movements");
+        if (isInitial) {
+          setLoading(true);
+        }
+
+        const response = await fetch("/api/recent-movements?t=" + Date.now(), {
+          cache: "no-store",
+          headers: {
+            "Cache-Control": "no-cache",
+          },
+        });
         const result = await response.json();
         if (result.success) {
           setData(result.data);
@@ -30,10 +40,20 @@ export function TableCards() {
       } catch (error) {
         console.error("Error fetching recent movements:", error);
       } finally {
-        setLoading(false);
+        if (isInitial) {
+          setLoading(false);
+        }
       }
     }
-    fetchData();
+
+    // Fetch inicial
+    fetchData(true);
+
+    // Configurar polling cada 10 segundos para actualizaciones automáticas
+    const interval = setInterval(() => fetchData(false), 10000);
+
+    // Limpiar intervalo al desmontar
+    return () => clearInterval(interval);
   }, []);
 
   const table = useDataTableInstance({

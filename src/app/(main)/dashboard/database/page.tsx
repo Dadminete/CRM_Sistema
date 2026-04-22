@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   Database,
   Download,
@@ -12,15 +15,17 @@ import {
   AlertTriangle,
   RefreshCw,
   Search,
+  Terminal,
+  CheckCircle2,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { SyncLogModal } from "@/components/database/sync-log-modal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface Backup {
   name: string;
@@ -30,10 +35,21 @@ interface Backup {
 
 export default function DatabasePage() {
   const [backups, setBackups] = useState<Backup[]>([]);
-  const [config, setConfig] = useState<{ backupPath: string; databaseUrl: string } | null>(null);
+  const [config, setConfig] = useState<{
+    backupPath: string;
+    localStatus?: string;
+    cloudStatus?: string;
+    localUrl?: string;
+    cloudUrl?: string;
+    pendingSyncCount?: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncLogs, setSyncLogs] = useState<string[]>([]);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
+  const [showSyncModal, setShowSyncModal] = useState(false);
 
   const fetchBackups = async () => {
     setIsLoading(true);
@@ -108,6 +124,7 @@ export default function DatabasePage() {
       const data = await res.json();
       if (data.success) {
         toast.success("Restauración completada con éxito");
+        fetchBackups(); // Refresh the list after restore
       } else {
         throw new Error(data.error || "Error desconocido");
       }
@@ -144,6 +161,48 @@ export default function DatabasePage() {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const handleSyncCloud = async () => {
+    setIsSyncing(true);
+    setSyncLogs([]);
+    setSyncStatus("syncing");
+    setShowSyncModal(true);
+
+    try {
+      const response = await fetch("/api/database/sync/stream");
+      if (!response.body) throw new Error("No hay cuerpo de respuesta.");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        // Handle SSE chunks: data: {...}\n\n
+        const lines = chunk.split("\n\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              setSyncLogs((prev) => [...prev, data.message]);
+              if (data.message.includes("[SUCCESS]")) setSyncStatus("success");
+              if (data.message.includes("[ERROR]") || data.message.includes("[CRITICAL]")) setSyncStatus("error");
+            } catch (e) {
+              // Ignore partial JSON
+            }
+          }
+        }
+      }
+      fetchConfig();
+    } catch (error: any) {
+      setSyncLogs((prev) => [...prev, `[CRITICAL] Error de red: ${error.message}`]);
+      setSyncStatus("error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const filteredBackups = backups.filter((b) => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
@@ -165,16 +224,73 @@ export default function DatabasePage() {
 
       {/* Seccion de Resumen */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-l-4 border-l-green-500 shadow-sm">
+        {/* Card Local DB */}
+        <Card
+          className={`border-l-4 shadow-sm ${config?.localStatus === "online" ? "border-l-green-500" : "border-l-red-500"}`}
+        >
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Estado Conexión</CardTitle>
-            <ShieldCheck className="h-4 w-4 text-green-500" />
+            <CardTitle className="text-sm font-medium">Base Local (Principal)</CardTitle>
+            <ShieldCheck
+              className={`h-4 w-4 ${config?.localStatus === "online" ? "text-green-500" : "text-red-500"}`}
+            />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Activa</div>
-            <p className="text-muted-foreground text-xs">{config?.databaseUrl || "Neon DB"}</p>
+            <div
+              className={`text-2xl font-bold ${config?.localStatus === "online" ? "text-green-600" : "text-red-600"}`}
+            >
+              {config?.localStatus === "online" ? "Conectado" : "Error"}
+            </div>
+            <p className="text-muted-foreground text-xs">{config?.localUrl || "PostgreSQL 127.0.0.1"}</p>
           </CardContent>
         </Card>
+
+        {/* Card Cloud Sync */}
+        <Card
+          className={`border-l-4 shadow-sm ${config?.cloudStatus === "online" ? "border-l-blue-500" : "border-l-amber-500"}`}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Sincronización Nube</CardTitle>
+            <RefreshCw className={`h-4 w-4 ${config?.cloudStatus === "online" ? "text-blue-500" : "text-amber-500"}`} />
+          </CardHeader>
+          <CardContent>
+            <div
+              className={`text-2xl font-bold ${config?.cloudStatus === "online" ? "text-blue-600" : "text-amber-600"}`}
+            >
+              {config?.cloudStatus === "online" ? "Sincronizado" : "Offline"}
+            </div>
+            <div className="mt-1 flex items-center justify-between gap-1">
+              <div className="flex flex-col">
+                <p className="text-muted-foreground text-[10px] font-semibold uppercase">
+                  {config?.cloudUrl || "Neon DB"}
+                </p>
+                {config?.pendingSyncCount && config.pendingSyncCount > 0 ? (
+                  <Badge variant="destructive" className="h-4 animate-pulse px-1 text-[9px]">
+                    {config.pendingSyncCount} cambios pendientes
+                  </Badge>
+                ) : (
+                  <p className="flex items-center gap-1 text-[10px] text-green-600">
+                    <CheckCircle2 className="h-3 w-3" /> Al día
+                  </p>
+                )}
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleSyncCloud}
+                disabled={isSyncing || config?.localStatus !== "online"}
+                className="h-7 gap-1 px-2 text-[10px] hover:bg-blue-100 hover:text-blue-700"
+              >
+                {isSyncing ? (
+                  <RefreshCw className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Download className="h-3 w-3 rotate-180" />
+                )}
+                Sincronizar ahora
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
         <Card className="border-l-primary border-l-4 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Respaldos</CardTitle>
@@ -182,9 +298,12 @@ export default function DatabasePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{backups.length}</div>
-            <p className="text-muted-foreground text-xs">Archivos en storage local</p>
+            <p className="text-muted-foreground text-xs">
+              Archivos en storage local {config?.backupPath ? `(${config.backupPath})` : ""}
+            </p>
           </CardContent>
         </Card>
+
         <Card className="border-l-4 border-l-amber-500 shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Último Respaldo</CardTitle>
@@ -194,19 +313,7 @@ export default function DatabasePage() {
             <div className="truncate text-xl font-bold">
               {backups[0] ? format(new Date(backups[0].createdAt), "dd MMM, HH:mm", { locale: es }) : "N/A"}
             </div>
-            <p className="text-muted-foreground text-xs">Resguardo automático diario</p>
-          </CardContent>
-        </Card>
-        <Card className="border-l-4 border-l-red-500 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Almacenamiento</CardTitle>
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="mb-1 truncate text-sm font-bold" title={config?.backupPath}>
-              {config?.backupPath || "E:\\Backups"}
-            </div>
-            <p className="text-muted-foreground text-xs">Ruta configurada en .env</p>
+            <p className="text-muted-foreground text-xs">Protección de datos local</p>
           </CardContent>
         </Card>
       </div>
@@ -315,6 +422,12 @@ export default function DatabasePage() {
           copias importantes de forma periódica.
         </p>
       </div>
+      <SyncLogModal
+        isOpen={showSyncModal}
+        onClose={() => setShowSyncModal(false)}
+        logs={syncLogs}
+        status={syncStatus}
+      />
     </div>
   );
 }

@@ -67,6 +67,7 @@ function SelectContent({
           className
         )}
         position={position}
+        suppressHydrationWarning={true}
         {...props}
       >
         <SelectScrollUpButton />

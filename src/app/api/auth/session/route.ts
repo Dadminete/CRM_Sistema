@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getUserBySession, verifyToken } from "@/lib/auth";
+import { getCurrentUser } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   try {
@@ -14,17 +14,7 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Verify token
-    const payload = verifyToken(token);
-    if (!payload) {
-      return NextResponse.json({
-        success: true,
-        user: null,
-      });
-    }
-
-    // Get user from session
-    const user = await getUserBySession(payload.sessionId);
+    const user = await getCurrentUser(token);
 
     return NextResponse.json({
       success: true,

@@ -12,15 +12,15 @@ const chartData = [{ period: "last-week", groceries: 380, transport: 120, other:
 
 const chartConfig = {
   groceries: {
-    label: "Groceries",
+    label: "Compras",
     color: "var(--chart-1)",
   },
   transport: {
-    label: "Transport",
+    label: "Transporte",
     color: "var(--chart-2)",
   },
   other: {
-    label: "Other",
+    label: "Otros",
     color: "var(--chart-3)",
   },
 } satisfies ChartConfig;
@@ -30,7 +30,7 @@ export function ExpenseSummary() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Expense Summary</CardTitle>
+        <CardTitle>Resumen de Gastos</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <Separator />
@@ -59,7 +59,7 @@ export function ExpenseSummary() {
                             {formatCurrency(totalExpenses, { noDecimals: true })}
                           </tspan>
                           <tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + 4} className="fill-muted-foreground">
-                            Spent
+                            Gastado
                           </tspan>
                         </text>
                       );
@@ -98,7 +98,7 @@ export function ExpenseSummary() {
               <ShoppingBasket className="stroke-chart-1 size-5" />
             </div>
             <div className="space-y-0.5 text-center">
-              <p className="text-muted-foreground text-xs uppercase">Groceries</p>
+              <p className="text-muted-foreground text-xs uppercase">Compras</p>
               <p className="font-medium tabular-nums">{formatCurrency(chartData[0].groceries, { noDecimals: true })}</p>
             </div>
           </div>
@@ -108,7 +108,7 @@ export function ExpenseSummary() {
               <TramFront className="stroke-chart-2 size-5" />
             </div>
             <div className="space-y-0.5 text-center">
-              <p className="text-muted-foreground text-xs uppercase">Transport</p>
+              <p className="text-muted-foreground text-xs uppercase">Transporte</p>
               <p className="font-medium tabular-nums">{formatCurrency(chartData[0].transport, { noDecimals: true })}</p>
             </div>
           </div>
@@ -118,13 +118,13 @@ export function ExpenseSummary() {
               <Ellipsis className="stroke-chart-3 size-5" />
             </div>
             <div className="space-y-0.5 text-center">
-              <p className="text-muted-foreground text-xs uppercase">Other</p>
+              <p className="text-muted-foreground text-xs uppercase">Otros</p>
               <p className="font-medium tabular-nums">{formatCurrency(chartData[0].other, { noDecimals: true })}</p>
             </div>
           </div>
         </div>
         <span className="text-muted-foreground text-xs tabular-nums">
-          Weekly spending is capped at {formatCurrency(2000, { noDecimals: true })}
+          El gasto semanal tiene un límite de {formatCurrency(2000, { noDecimals: true })}
         </span>
       </CardContent>
     </Card>

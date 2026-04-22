@@ -4,7 +4,7 @@ import { logger } from "./logger";
 
 import { db } from "@/lib/db";
 
-export type NotificationType = "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "FACTURA" | "APROBACION" | "STOCK";
+export type NotificationType = "INFO" | "SUCCESS" | "WARNING" | "ERROR" | "FACTURA" | "APROBACION" | "STOCK" | "AVERIA";
 
 export interface CreateNotificationOptions {
   usuarioId: string;
@@ -138,3 +138,31 @@ export async function notifyPermissionChange(usuarioId: string, cambio: string):
     metadata: { cambio },
   });
 }
+
+export async function notifyNewOutage(usuarioId: string, clienteNombre: string, ticketNumero: string): Promise<void> {
+  await createNotification({
+    usuarioId,
+    tipo: "AVERIA",
+    titulo: "Nueva Avería Reportada",
+    mensaje: `Nueva avería registrada para ${clienteNombre} (Ticket: ${ticketNumero})`,
+    enlace: "/dashboard/averias/listado",
+    metadata: { ticketNumero, clienteNombre },
+  });
+}
+
+export async function notifyNewOutageBulk(
+  usuarioIds: string[],
+  clienteNombre: string,
+  ticketNumero: string,
+): Promise<void> {
+  if (usuarioIds.length === 0) return;
+
+  await createBulkNotifications(usuarioIds, {
+    tipo: "AVERIA",
+    titulo: "Nueva Avería Reportada",
+    mensaje: `Nueva avería registrada para ${clienteNombre} (Ticket: ${ticketNumero})`,
+    enlace: "/dashboard/averias/listado",
+    metadata: { ticketNumero, clienteNombre },
+  });
+}
+

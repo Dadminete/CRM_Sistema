@@ -21,8 +21,46 @@ import {
   pgEnum,
 } from "drizzle-orm/pg-core";
 
+export const syncQueue = pgTable("sync_queue", {
+  id: bigserial("id", { mode: "bigint" }).primaryKey().notNull(),
+  tabla: varchar("tabla", { length: 100 }).notNull(),
+  operacion: varchar("operacion", { length: 20 }).notNull(), // 'INSERT', 'UPDATE', 'DELETE'
+  payload: jsonb("payload").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).default(sql`CURRENT_TIMESTAMP`).notNull(),
+});
+
 export const categoriaCliente = pgEnum("CategoriaCliente", ["NUEVO", "VIEJO", "VIP", "INACTIVO"]);
 export const sexo = pgEnum("Sexo", ["MASCULINO", "FEMENINO", "OTRO"]);
+export const estadoCompraPapeleriaEnum = pgEnum("EstadoCompraPapeleria", [
+  "BORRADOR",
+  "PENDIENTE",
+  "PROCESADA",
+  "CANCELADA",
+]);
+
+export const tipoMovimientoInventarioEnum = pgEnum("TipoMovimientoInventario", [
+  "ENTRADA_COMPRA",
+  "SALIDA_VENTA",
+  "AJUSTE_POSITIVO",
+  "AJUSTE_NEGATIVO",
+  "MERMA",
+  "DEVOLUCION",
+]);
+
+export const metodoPagoPapeleriaEnum = pgEnum("MetodoPagoPapeleria", [
+  "EFECTIVO",
+  "TARJETA",
+  "TRANSFERENCIA",
+  "CREDITO",
+  "OTRO",
+]);
+
+export const estadoVentaPapeleriaEnum = pgEnum("EstadoVentaPapeleria", [
+  "PENDIENTE",
+  "COMPLETADA",
+  "CANCELADA",
+  "DEVUELTA",
+]);
 
 export const bitacora = pgTable(
   "bitacora",
@@ -136,6 +174,8 @@ export const detallesVentaPapeleria = pgTable(
     impuesto: numeric({ precision: 10, scale: 2 }).default("0").notNull(),
     descuento: numeric({ precision: 10, scale: 2 }).default("0").notNull(),
     total: numeric({ precision: 10, scale: 2 }).notNull(),
+    lote: varchar("lote", { length: 50 }),
+    cantidadDevuelta: integer("cantidad_devuelta").default(0).notNull(),
   },
   (table) => [
     index("detalles_venta_papeleria_producto_id_idx").using("btree", table.productoId.asc().nullsLast().op("int8_ops")),
@@ -1009,7 +1049,7 @@ export const comprasPapeleria = pgTable(
     descuento: numeric({ precision: 12, scale: 2 }).default("0").notNull(),
     itbis: numeric({ precision: 12, scale: 2 }).default("0").notNull(),
     total: numeric({ precision: 12, scale: 2 }).notNull(),
-    estado: varchar({ length: 20 }).default("pendiente").notNull(),
+    estado: estadoCompraPapeleriaEnum("estado").default("PENDIENTE").notNull(),
     formaPago: varchar("forma_pago", { length: 20 }),
     observaciones: text(),
     recibidaPor: uuid("recibida_por"),
@@ -1797,7 +1837,7 @@ export const movimientosInventario = pgTable(
     // You can use { mode: "bigint" } if numbers are exceeding js number limitations
     productoId: bigint("producto_id", { mode: "number" }).notNull(),
     usuarioId: uuid("usuario_id").notNull(),
-    tipoMovimiento: varchar("tipo_movimiento", { length: 20 }).notNull(),
+    tipoMovimiento: tipoMovimientoInventarioEnum("tipo_movimiento").notNull(),
     cantidad: integer().notNull(),
     cantidadAnterior: integer("cantidad_anterior").notNull(),
     cantidadNueva: integer("cantidad_nueva").notNull(),
@@ -1948,6 +1988,38 @@ export const suscripciones = pgTable(
   ],
 );
 
+export const historialSuscripciones = pgTable(
+  "historial_suscripciones",
+  {
+    id: uuid().defaultRandom().primaryKey().notNull(),
+    suscripcionId: uuid("suscripcion_id").notNull(),
+    usuarioId: uuid("usuario_id"),
+    tipoCambio: varchar("tipo_cambio", { length: 50 }).notNull(), // 'SERVICIO', 'PLAN', 'PRECIO', 'ESTADO'
+    valorAnterior: text("valor_anterior"),
+    valorNuevo: text("valor_nuevo"),
+    fecha: timestamp("fecha", { precision: 6, withTimezone: true, mode: "string" })
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => [
+    index("historial_suscripciones_suscripcion_id_idx").using("btree", table.suscripcionId.asc().nullsLast().op("uuid_ops")),
+    foreignKey({
+      columns: [table.suscripcionId],
+      foreignColumns: [suscripciones.id],
+      name: "historial_suscripciones_suscripcion_id_fkey",
+    })
+      .onUpdate("cascade")
+      .onDelete("cascade"),
+    foreignKey({
+      columns: [table.usuarioId],
+      foreignColumns: [usuarios.id],
+      name: "historial_suscripciones_usuario_id_fkey",
+    })
+      .onUpdate("cascade")
+      .onDelete("set null"),
+  ],
+);
+
 export const proveedores = pgTable(
   "proveedores",
   {
@@ -1996,8 +2068,8 @@ export const ventasPapeleria = pgTable(
     descuentos: numeric({ precision: 10, scale: 2 }).default("0").notNull(),
     total: numeric({ precision: 10, scale: 2 }).notNull(),
     moneda: varchar({ length: 3 }).default("USD").notNull(),
-    metodoPago: varchar("metodo_pago", { length: 50 }).notNull(),
-    estado: varchar({ length: 20 }).default("completada").notNull(),
+    metodoPago: metodoPagoPapeleriaEnum("metodo_pago").default("EFECTIVO").notNull(),
+    estado: estadoVentaPapeleriaEnum("estado").default("COMPLETADA").notNull(),
     notas: text(),
     createdAt: timestamp("created_at", { precision: 6, withTimezone: true, mode: "string" })
       .default(sql`CURRENT_TIMESTAMP`)
@@ -2083,6 +2155,9 @@ export const productosPapeleria = pgTable(
       .notNull(),
     updatedAt: timestamp("updated_at", { precision: 6, withTimezone: true, mode: "string" }).notNull(),
     proveedorId: uuid("proveedor_id"),
+    aplicaImpuesto: boolean("aplica_impuesto").default(false).notNull(),
+    tasaImpuesto: numeric("tasa_impuesto", { precision: 5, scale: 2 }).default("0").notNull(),
+    costoPromedio: numeric("costo_promedio", { precision: 10, scale: 2 }).default("0").notNull(),
   },
   (table) => [
     index("productos_papeleria_activo_idx").using("btree", table.activo.asc().nullsLast().op("bool_ops")),
@@ -2915,3 +2990,14 @@ export const usuariosPermisos = pgTable(
     primaryKey({ columns: [table.usuarioId, table.permisoId], name: "usuarios_permisos_pkey" }),
   ],
 );
+export const historialCostosPapeleria = pgTable("historial_costos_papeleria", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productoId: bigint("producto_id", { mode: "number" })
+    .notNull()
+    .references(() => productosPapeleria.id),
+  costoAnterior: numeric("costo_anterior", { precision: 10, scale: 2 }).notNull(),
+  costoNuevo: numeric("costo_nuevo", { precision: 10, scale: 2 }).notNull(),
+  fechaCambio: timestamp("fecha_cambio", { withTimezone: true }).defaultNow().notNull(),
+  usuarioId: uuid("usuario_id").references(() => usuarios.id),
+  motivo: varchar("motivo", { length: 100 }),
+});

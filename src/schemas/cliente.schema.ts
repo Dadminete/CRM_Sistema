@@ -87,6 +87,14 @@ export const createClienteSchema = z.object({
   observaciones: z.string().optional().nullable(),
   activo: z.boolean().default(true).optional(),
   aceptaPromociones: z.boolean().default(true).optional(),
+  fotoUrl: z.string().optional().nullable(),
+  planId: z
+    .number()
+    .int("El plan seleccionado no es valido")
+    .positive("El plan seleccionado no es valido")
+    .optional()
+    .nullable(),
+  servicioIds: z.array(z.string().uuid("Servicio adicional invalido")).max(20).optional().default([]),
 });
 
 /**

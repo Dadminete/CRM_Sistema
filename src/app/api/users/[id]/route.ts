@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { usuarios, usuariosRoles } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { hashPassword } from "@/lib/auth";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -9,10 +10,19 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     const body = await req.json();
     const { rolId, password, ...userData } = body;
 
-    // Si el password viene vacío, lo eliminamos para no sobreescribir la clave actual
-    const dataToUpdate: any = { ...userData };
+    // Si el password viene, lo hasheamos y actualizamos passwordHash
+    const dataToUpdate: any = {};
+    
+    // Solo incluir campos que tengan valor
+    Object.entries(userData).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== "") {
+        dataToUpdate[key] = value;
+      }
+    });
+    
     if (password && password.trim() !== "") {
-      dataToUpdate.password = password;
+      // Hash the password before storing
+      dataToUpdate.passwordHash = await hashPassword(password);
     }
 
     // 1. Update user data

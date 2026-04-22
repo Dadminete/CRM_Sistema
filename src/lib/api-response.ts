@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { serializeBigInt } from "./serializers";
 
 export interface ApiSuccessResponse<T = unknown> {
   success: true;
@@ -31,11 +32,11 @@ export function successResponse<T>(
 ): NextResponse<ApiSuccessResponse<T>> {
   const response: ApiSuccessResponse<T> = {
     success: true,
-    data,
+    data: serializeBigInt(data),
   };
 
   if (meta) {
-    response.meta = meta;
+    response.meta = serializeBigInt(meta);
   }
 
   return NextResponse.json(response, { status });
@@ -55,7 +56,7 @@ export function errorResponse(
   };
 
   if (details) {
-    response.details = details;
+    response.details = serializeBigInt(details);
   }
 
   return NextResponse.json(response, { status });

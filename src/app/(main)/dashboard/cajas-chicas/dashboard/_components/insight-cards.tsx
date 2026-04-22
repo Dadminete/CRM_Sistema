@@ -11,6 +11,14 @@ interface InsightCardsProps {
 }
 
 export function InsightCards({ distribution }: InsightCardsProps) {
+  const formatCurrency = (value: number) =>
+    new Intl.NumberFormat("es-DO", {
+      style: "currency",
+      currency: "DOP",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value || 0);
+
   const chartData = Array.isArray(distribution)
     ? distribution.map((d, i) => ({
         source: d.source,
@@ -50,7 +58,7 @@ export function InsightCards({ distribution }: InsightCardsProps) {
                             y={viewBox.cy}
                             className="fill-foreground text-xl font-bold tabular-nums"
                           >
-                            {totalValue > 1000 ? `$${(totalValue / 1000).toFixed(1)}k` : `$${totalValue}`}
+                            {formatCurrency(totalValue)}
                           </tspan>
                           <tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + 24} className="fill-muted-foreground text-xs">
                             Total
@@ -73,7 +81,7 @@ export function InsightCards({ distribution }: InsightCardsProps) {
                           <span className="size-2 shrink-0 rounded-full" style={{ background: item.fill }} />
                           {item.source}
                         </span>
-                        <span className="font-medium tabular-nums">${(item.value / 1000).toFixed(1)}k</span>
+                        <span className="font-medium tabular-nums">{formatCurrency(item.value)}</span>
                       </li>
                     ))}
                   </ul>
@@ -90,20 +98,20 @@ export function InsightCards({ distribution }: InsightCardsProps) {
         </CardHeader>
         <CardContent className="size-full max-h-52">
           <ChartContainer config={{}} className="size-full">
-            <BarChart accessibilityLayer data={chartData} layout="vertical">
+            <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 60, right: 10 }}>
               <CartesianGrid horizontal={false} />
-              <YAxis dataKey="source" type="category" tickLine={false} tickMargin={10} axisLine={false} hide />
+              <YAxis dataKey="source" type="category" tickLine={false} axisLine={false} hide />
               <XAxis dataKey="value" type="number" hide />
               <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
               <Bar dataKey="value" layout="vertical" fill="var(--chart-1)" radius={[0, 6, 6, 0]}>
-                <LabelList dataKey="source" position="insideLeft" offset={8} className="fill-white text-[10px]" />
                 <LabelList
                   dataKey="value"
-                  position="insideRight"
-                  offset={8}
-                  className="fill-white text-[10px] tabular-nums"
-                  formatter={(v: any) => `$${v.toLocaleString()}`}
+                  position="left"
+                  offset={10}
+                  className="fill-foreground text-[10px] font-bold tabular-nums"
+                  formatter={(v: any) => formatCurrency(Number(v || 0))}
                 />
+                <LabelList dataKey="source" position="insideRight" offset={8} className="fill-white text-[10px]" />
               </Bar>
             </BarChart>
           </ChartContainer>

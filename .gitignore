@@ -33,6 +33,7 @@ yarn-error.log*
 # vercel
 .vercel
 
-# typescript
-*.tsbuildinfo
+# typ
+# legacy
+DBSISMOVIL/
 next-env.d.ts

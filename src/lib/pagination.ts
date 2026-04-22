@@ -21,7 +21,7 @@ export const paginationSchema = z.object({
     .optional()
     .default("50")
     .transform((val) => parseInt(val, 10))
-    .pipe(z.number().int().positive().max(100).default(50)),
+    .pipe(z.number().int().positive().max(2000).default(50)),
   sortBy: z.string().optional(),
   sortOrder: z.enum(["asc", "desc"]).optional().default("desc"),
 });

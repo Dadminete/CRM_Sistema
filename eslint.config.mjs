@@ -41,6 +41,14 @@ export default [
       react: {
         version: "detect",
       },
+      "import/parsers": {
+        "@typescript-eslint/parser": [".ts", ".tsx"],
+      },
+      "import/resolver": {
+        typescript: {
+          project: "./tsconfig.json",
+        },
+      },
     },
     plugins: {
       import: pluginImport,
@@ -58,7 +66,7 @@ export default [
   {
     rules: {
       // Prettier integration rules
-      "prettier/prettier": "warn",
+      "prettier/prettier": ["warn", { endOfLine: "auto" }],
 
       // File Naming
       "unicorn/filename-case": [

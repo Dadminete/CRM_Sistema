@@ -19,13 +19,15 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+import { Icon } from "@/components/ui/icon";
+
 export function NavDocuments({
   items,
 }: {
   readonly items: readonly {
     readonly name: string;
     readonly url: string;
-    readonly icon: LucideIcon;
+    readonly icon: string;
   }[];
 }) {
   const { isMobile } = useSidebar();
@@ -38,7 +40,7 @@ export function NavDocuments({
           <SidebarMenuItem key={item.name}>
             <SidebarMenuButton asChild>
               <a href={item.url}>
-                <item.icon />
+                <Icon name={item.icon} />
                 <span>{item.name}</span>
               </a>
             </SidebarMenuButton>

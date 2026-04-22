@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+
 import {
   Wallet,
   Lock,
@@ -14,12 +15,11 @@ import {
   History,
   ShieldCheck,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -28,11 +28,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { toast } from "sonner";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
 
-const USUARIO_ID = "df4b1335-5ff6-4703-8dcd-3e2f74fb0822"; // Valid user ID from DB
 const IS_ADMIN = true; // Simulado para propósitos de desarrollo, conectar con auth real en producción
 
 const formatCurrency = (v: string | number) =>
@@ -48,6 +49,7 @@ export default function AperturaCierrePage() {
   // Form state for opening
   const [selectedCajaId, setSelectedCajaId] = useState("");
   const [montoIngresado, setMontoIngresado] = useState("0");
+  const [montoCierreIngresado, setMontoCierreIngresado] = useState("0");
   const [observaciones, setObservaciones] = useState("");
 
   // Alert dialog state
@@ -64,17 +66,27 @@ export default function AperturaCierrePage() {
     }
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/cajas/sesiones?cajaId=${cajaId}&usuarioId=${USUARIO_ID}`);
+      const res = await fetch(`/api/cajas/sesiones?cajaId=${cajaId}`);
       const data = await res.json();
       if (data.success) {
         setActiveSession(data.activeSession);
         setDailyTotals(data.dailyTotals);
         if (data.activeSession) {
           setMontoIngresado(data.activeSession.montoApertura);
+          const esperado =
+            Number(data.activeSession.montoApertura || 0) +
+            Number(data.activeSession.totalIngresos || 0) -
+            Number(data.activeSession.totalGastos || 0) +
+            Number(data.activeSession.totalTraspasosIngreso || 0) -
+            Number(data.activeSession.totalTraspasosGasto || 0);
+          setMontoCierreIngresado(String(esperado));
         } else {
           // Si no hay sesión, ponemos el saldo actual como sugerencia
           const caja = cajas.find((c) => c.id === cajaId);
-          if (caja) setMontoIngresado(caja.saldoActual);
+          if (caja) {
+            setMontoIngresado(caja.saldoActual);
+            setMontoCierreIngresado("0");
+          }
         }
       }
     } catch (error) {
@@ -89,25 +101,34 @@ export default function AperturaCierrePage() {
     try {
       const [resLookup, resSession] = await Promise.all([
         fetch("/api/contabilidad/lookup"),
-        fetch(`/api/cajas/sesiones?usuarioId=${USUARIO_ID}`),
+        fetch("/api/cajas/sesiones"),
       ]);
 
-      const [dataLookup, dataSession] = await Promise.all([resLookup.json(), resSession.json()]);
+      const [dataLookup] = await Promise.all([resLookup.json(), resSession.json()]);
 
       if (dataLookup.success) {
         const fetchedCajas = dataLookup.data.cajas;
-        setCajas(fetchedCajas);
+        // Ordenar cajas: Caja Fuerte siempre al final
+        const sortedCajas = [...fetchedCajas].sort((a: any, b: any) => {
+          const isAfuerte = a.nombre.toLowerCase().includes("caja fuerte");
+          const isBfuerte = b.nombre.toLowerCase().includes("caja fuerte");
+          if (isAfuerte && !isBfuerte) return 1;
+          if (!isAfuerte && isBfuerte) return -1;
+          return a.nombre.localeCompare(b.nombre);
+        });
+        setCajas(sortedCajas);
 
-        // Si el usuario ya tiene una sesión abierta, seleccionamos esa caja por defecto
-        if (dataSession.success && dataSession.activeSession) {
-          setSelectedCajaId(dataSession.activeSession.cajaId);
-          setActiveSession(dataSession.activeSession);
-          setDailyTotals(dataSession.dailyTotals);
-          setMontoIngresado(dataSession.activeSession.montoApertura);
-        } else if (fetchedCajas.length > 0 && !selectedCajaId) {
-          // Si no hay sesión activa, seleccionamos la primera caja de la lista
-          setSelectedCajaId(fetchedCajas[0].id);
-          setMontoIngresado(fetchedCajas[0].saldoActual);
+        if (sortedCajas.length > 0 && !selectedCajaId) {
+          // Si no hay sesión activa, buscamos la Caja Principal por defecto
+          const principal = sortedCajas.find((c: any) => c.nombre.toLowerCase().includes("principal"));
+          if (principal) {
+            setSelectedCajaId(principal.id);
+            setMontoIngresado(principal.saldoActual);
+          } else {
+            // Fallback a la primera de la lista
+            setSelectedCajaId(sortedCajas[0].id);
+            setMontoIngresado(sortedCajas[0].saldoActual);
+          }
         }
       }
     } catch (error) {
@@ -159,7 +180,6 @@ export default function AperturaCierrePage() {
           cajaId: selectedCajaId,
           monto: montoIngresado,
           observaciones: forceAdmin ? `[FORZADO ADMIN] - ${observaciones}` : observaciones,
-          usuarioId: USUARIO_ID,
         }),
       });
       const data = await res.json();
@@ -189,7 +209,7 @@ export default function AperturaCierrePage() {
         body: JSON.stringify({
           action: "cerrar",
           sessionId: activeSession.id,
-          montoCierre: montoIngresado,
+          montoCierre: montoCierreIngresado,
           observaciones: observaciones, // Enviar observaciones al cerrar
         }),
       });
@@ -294,7 +314,7 @@ export default function AperturaCierrePage() {
                     <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Usuario</span>
                     <div className="flex h-8 items-center gap-2 truncate text-sm font-bold text-slate-700">
                       <ShieldCheck className="h-4 w-4 text-slate-400" />
-                      Admin
+                      {activeSession.usuarioNombre || "Usuario en sesión"}
                     </div>
                   </div>
                 </div>
@@ -514,12 +534,13 @@ export default function AperturaCierrePage() {
                   <span className="font-bold text-slate-700">{formatCurrency(activeSession.montoApertura)}</span>
                 </div>
                 <div className="rounded border bg-slate-50 p-3">
-                  <span className="block text-[10px] font-bold text-slate-500 uppercase">Saldo Esperado</span>
                   <span className="border-b-2 border-slate-300 font-bold text-slate-900">
                     {formatCurrency(
-                      Number(activeSession.montoApertura) +
+                      Number(activeSession.montoApertura || 0) +
                         Number(activeSession.totalIngresos || 0) -
-                        Number(activeSession.totalGastos || 0),
+                        Number(activeSession.totalGastos || 0) +
+                        Number(activeSession.totalTraspasosIngreso || 0) -
+                        Number(activeSession.totalTraspasosGasto || 0),
                     )}
                   </span>
                 </div>
@@ -528,6 +549,12 @@ export default function AperturaCierrePage() {
                 </div>
                 <div className="font-medium text-rose-600">
                   - Gastos: {formatCurrency(activeSession.totalGastos || 0)}
+                </div>
+                <div className="font-medium text-blue-600">
+                  + Traspasos (+): {formatCurrency(activeSession.totalTraspasosIngreso || 0)}
+                </div>
+                <div className="font-medium text-amber-600">
+                  - Traspasos (-): {formatCurrency(activeSession.totalTraspasosGasto || 0)}
                 </div>
               </>
             ) : (
@@ -542,8 +569,8 @@ export default function AperturaCierrePage() {
               <Input
                 type="number"
                 className="h-12 bg-white pl-10 text-center text-xl font-black"
-                value={montoIngresado}
-                onChange={(e) => setMontoIngresado(e.target.value)}
+                value={montoCierreIngresado}
+                onChange={(e) => setMontoCierreIngresado(e.target.value)}
                 placeholder="0.00"
                 autoFocus
               />
@@ -554,10 +581,12 @@ export default function AperturaCierrePage() {
           {activeSession &&
             (() => {
               const esperado =
-                Number(activeSession.montoApertura) +
+                Number(activeSession.montoApertura || 0) +
                 Number(activeSession.totalIngresos || 0) -
-                Number(activeSession.totalGastos || 0);
-              const real = Number(montoIngresado || 0);
+                Number(activeSession.totalGastos || 0) +
+                Number(activeSession.totalTraspasosIngreso || 0) -
+                Number(activeSession.totalTraspasosGasto || 0);
+              const real = Number(montoCierreIngresado || 0);
               const diff = real - esperado;
 
               if (diff !== 0) {

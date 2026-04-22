@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 
 import { logAudit } from "@/lib/audit";
-import { verifyToken, getUserBySession } from "@/lib/auth";
+import { verifyToken, getUserById, getUserBySession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { permisos, rolesPermisos, usuariosRoles, usuariosPermisos } from "@/lib/db/schema";
 
@@ -95,7 +95,7 @@ async function authenticate(req: NextRequest): Promise<AuthenticatedUser | null>
   }
 
   // Get user from session
-  const user = await getUserBySession(payload.sessionId);
+  const user = (await getUserBySession(payload.sessionId)) ?? (await getUserById(payload.userId));
   if (!user) {
     return null;
   }
@@ -115,13 +115,13 @@ async function authenticate(req: NextRequest): Promise<AuthenticatedUser | null>
  * Higher-order function to protect API routes with authentication and optional permissions
  */
 export function withAuth(
-  handler: (req: NextRequest, context: AuthContext) => Promise<Response>,
+  handler: (req: NextRequest, context: AuthContext & Record<string, any>) => Promise<Response>,
   options?: {
     requiredPermission?: string;
     skipAudit?: boolean;
   },
 ) {
-  return async (req: NextRequest): Promise<Response> => {
+  return async (req: NextRequest, routeContext?: Record<string, any>): Promise<Response> => {
     const startTime = Date.now();
     let resultado: "exitoso" | "fallido" = "exitoso";
     let mensajeError: string | undefined;
@@ -187,8 +187,13 @@ export function withAuth(
         hasPermission: (permission: string) => checkPermission(user.id, permission),
       };
 
+      const mergedContext = {
+        ...(routeContext ?? {}),
+        ...authContext,
+      };
+
       // Call the actual handler
-      const response = await handler(req, authContext);
+      const response = await handler(req, mergedContext);
 
       // Check response status
       if (!response.ok) {

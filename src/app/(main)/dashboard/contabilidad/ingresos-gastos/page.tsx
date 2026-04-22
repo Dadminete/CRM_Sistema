@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
+
 import { useSearchParams } from "next/navigation";
+
 import {
   ArrowDownCircle,
   ArrowUpCircle,
@@ -19,20 +21,11 @@ import {
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
   DialogContent,
@@ -41,10 +34,20 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
 // ─── Tipos ───
@@ -118,8 +121,6 @@ const metodoIcon = (m: string) => {
   }
 };
 
-const USUARIO_ID = "df4b1335-5ff6-4703-8dcd-3e2f74fb0822"; // Valid user ID from DB
-
 // ─── Página Principal con Suspense ───
 export default function IngresosGastosPage() {
   return (
@@ -135,6 +136,9 @@ function IngresosGastosPageContent() {
 
   const [activeTab, setActiveTab] = useState<"gasto" | "ingreso">("gasto");
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const LIMIT = 100;
   const [lookup, setLookup] = useState<LookupData>({
     categorias: [],
     bancos: [],
@@ -149,24 +153,30 @@ function IngresosGastosPageContent() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [activeSession, setActiveSession] = useState<any>(null);
   const [isValidatingSession, setIsValidatingSession] = useState(false);
+  const [usuarioId, setUsuarioId] = useState<string>("");
 
   // ─── Data fetching ───
-  const fetchMovimientos = useCallback(async (tipo: string) => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/contabilidad/movimientos?tipo=${tipo}`);
-      const data = await res.json();
-      if (data.success) {
-        setMovimientos(data.data);
-      } else {
-        toast.error("Error al cargar movimientos");
+  const fetchMovimientos = useCallback(
+    async (tipo: string, newOffset = 0, append = false) => {
+      setIsLoading(true);
+      try {
+        const res = await fetch(`/api/contabilidad/movimientos?tipo=${tipo}&limit=${LIMIT}&offset=${newOffset}`);
+        const data = await res.json();
+        if (data.success) {
+          setMovimientos((prev) => (append ? [...prev, ...data.data] : data.data));
+          setTotal(data.total ?? 0);
+          setOffset(newOffset);
+        } else {
+          toast.error("Error al cargar movimientos");
+        }
+      } catch {
+        toast.error("Error de conexión");
+      } finally {
+        setIsLoading(false);
       }
-    } catch {
-      toast.error("Error de conexión");
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
+    },
+    [LIMIT],
+  );
 
   const fetchLookup = useCallback(async (tipoCategoria: string) => {
     try {
@@ -180,9 +190,11 @@ function IngresosGastosPageContent() {
     }
   }, []);
 
-  const checkSession = useCallback(async () => {
+  const checkSession = useCallback(async (uid?: string) => {
     try {
-      const res = await fetch(`/api/cajas/sesiones?usuarioId=${USUARIO_ID}`);
+      // Si no hay uid, buscamos cualquier sesión abierta (comportamiento similar a apertura/cierre)
+      const url = uid ? `/api/cajas/sesiones?usuarioId=${uid}` : "/api/cajas/sesiones";
+      const res = await fetch(url);
       const data = await res.json();
       if (data.success) {
         setActiveSession(data.activeSession);
@@ -193,9 +205,26 @@ function IngresosGastosPageContent() {
   }, []);
 
   useEffect(() => {
-    fetchMovimientos(activeTab);
+    setMovimientos([]);
+    setTotal(0);
+    setOffset(0);
+    fetchMovimientos(activeTab, 0, false);
     fetchLookup(activeTab);
-    checkSession();
+
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((res) => {
+        const currentUserId = res?.data?.profile?.id || "";
+        if (currentUserId) {
+          setUsuarioId(currentUserId);
+        }
+        // Llamar checkSession incluso si no hay ID aún para ver si hay alguna caja abierta general
+        checkSession(currentUserId);
+      })
+      .catch((err) => {
+        console.error(err);
+        checkSession(); // Reintento sin UID
+      });
   }, [activeTab, fetchMovimientos, fetchLookup, checkSession]);
 
   // Pre-poblar si viene facturaId
@@ -235,6 +264,7 @@ function IngresosGastosPageContent() {
   const handleTabChange = (val: string) => {
     setActiveTab(val as "gasto" | "ingreso");
     setSearchTerm("");
+    setOffset(0);
   };
 
   const openNew = () => {
@@ -265,8 +295,24 @@ function IngresosGastosPageContent() {
       return;
     }
 
-    // Validación de Sesión de Caja para pagos en efectivo
-    if (form.metodo === "efectivo" && !activeSession) {
+    // Doble validación de Sesión de Caja para pagos en efectivo
+    let currentSession = activeSession;
+    if (form.metodo === "efectivo" && !currentSession) {
+      // Re-verificar sesión por si acaso o si se abrió en otra pestaña
+      try {
+        const url = form.cajaId ? `/api/cajas/sesiones?cajaId=${form.cajaId}` : "/api/cajas/sesiones";
+        const res = await fetch(url);
+        const data = await res.json();
+        if (data.success && data.activeSession) {
+          currentSession = data.activeSession;
+          setActiveSession(data.activeSession);
+        }
+      } catch (e) {
+        console.error("Error al re-verificar sesión:", e);
+      }
+    }
+
+    if (form.metodo === "efectivo" && !currentSession) {
       toast.error("Caja Cerrada: Debe abrir una sesión de caja para registrar movimientos en efectivo.");
       return;
     }
@@ -291,8 +337,7 @@ function IngresosGastosPageContent() {
         ...form,
         fecha: fechaISO,
         tipo: activeTab,
-        // Hardcoded for now – in a real app, get from session
-        usuarioId: USUARIO_ID,
+        usuarioId: usuarioId || undefined,
       };
 
       if (editingId) body.id = editingId;
@@ -306,7 +351,9 @@ function IngresosGastosPageContent() {
       if (data.success) {
         toast.success(editingId ? "Movimiento actualizado" : "Movimiento registrado");
         setIsDialogOpen(false);
-        fetchMovimientos(activeTab);
+        // Reset to first page after saving
+        setOffset(0);
+        fetchMovimientos(activeTab, 0, false);
       } else {
         toast.error("Error: " + data.error);
       }
@@ -322,7 +369,8 @@ function IngresosGastosPageContent() {
       const data = await res.json();
       if (data.success) {
         toast.success("Movimiento eliminado");
-        fetchMovimientos(activeTab);
+        setOffset(0);
+        fetchMovimientos(activeTab, 0, false);
       } else {
         toast.error("Error: " + data.error);
       }
@@ -353,6 +401,10 @@ function IngresosGastosPageContent() {
   const cuentasBancariasFiltradas = form.bankId
     ? lookup.cuentasBancarias.filter((c: any) => c.bankId === form.bankId)
     : lookup.cuentasBancarias;
+
+  const categoriasOrdenadas = [...lookup.categorias].sort((a: any, b: any) =>
+    String(a?.nombre || "").localeCompare(String(b?.nombre || ""), "es", { sensitivity: "base" }),
+  );
 
   const filtered = movimientos.filter((m) => {
     if (!searchTerm) return true;
@@ -416,7 +468,14 @@ function IngresosGastosPageContent() {
             </TabsTrigger>
           </TabsList>
           <div className="flex gap-2">
-            <Button variant="outline" className="gap-2" onClick={() => fetchMovimientos(activeTab)}>
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => {
+                setOffset(0);
+                fetchMovimientos(activeTab, 0, false);
+              }}
+            >
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
               Sincronizar
             </Button>
@@ -460,7 +519,12 @@ function IngresosGastosPageContent() {
               <CalendarDays className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{movimientos.length}</div>
+              <div className="text-3xl font-bold">{total > 0 ? total : movimientos.length}</div>
+              {total > movimientos.length && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Mostrando {movimientos.length} de {total}
+                </p>
+              )}
             </CardContent>
           </Card>
           <Card className="border-l-4 border-l-violet-500">
@@ -487,6 +551,19 @@ function IngresosGastosPageContent() {
             onDelete={handleDelete}
             isGasto
           />
+          {!searchTerm && total > movimientos.length && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={isLoading}
+                onClick={() => fetchMovimientos(activeTab, offset + LIMIT, true)}
+              >
+                {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                Cargar más ({movimientos.length} de {total})
+              </Button>
+            </div>
+          )}
         </TabsContent>
         <TabsContent value="ingreso" className="mt-0">
           <MovimientosTable
@@ -498,6 +575,19 @@ function IngresosGastosPageContent() {
             onDelete={handleDelete}
             isGasto={false}
           />
+          {!searchTerm && total > movimientos.length && (
+            <div className="mt-4 flex justify-center">
+              <Button
+                variant="outline"
+                className="gap-2"
+                disabled={isLoading}
+                onClick={() => fetchMovimientos(activeTab, offset + LIMIT, true)}
+              >
+                {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                Cargar más ({movimientos.length} de {total})
+              </Button>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -564,9 +654,9 @@ function IngresosGastosPageContent() {
                   <SelectValue placeholder="Seleccionar categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {lookup.categorias.map((c: any) => (
+                  {categoriasOrdenadas.map((c: any) => (
                     <SelectItem key={c.id} value={c.id}>
-                      {c.codigo} — {c.nombre}
+                      {c.nombre}
                     </SelectItem>
                   ))}
                 </SelectContent>

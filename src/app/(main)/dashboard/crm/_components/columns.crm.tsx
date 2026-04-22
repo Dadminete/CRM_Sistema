@@ -1,16 +1,16 @@
 import { ColumnDef } from "@tanstack/react-table";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { EllipsisVertical } from "lucide-react";
 import z from "zod";
-import { cn } from "@/lib/utils";
 
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 
 import { recentLeadSchema, recentMovementSchema } from "./schema";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
 
 export const recentLeadsColumns: ColumnDef<z.infer<typeof recentLeadSchema>>[] = [
   {
@@ -100,6 +100,22 @@ export const recentMovementsColumns: ColumnDef<z.infer<typeof recentMovementSche
     cell: ({ row }) => <span className="font-medium">{row.original.descripcion || "Sin descripción"}</span>,
   },
   {
+    accessorKey: "monto",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Monto" />,
+    cell: ({ row }) => {
+      const amount = Number(row.original.monto);
+      const isIngreso = row.original.tipo.toLowerCase().includes("ingreso");
+      return (
+        <span className={cn("font-medium tabular-nums", isIngreso ? "text-green-600" : "text-red-600")}>
+          {new Intl.NumberFormat("es-DO", {
+            style: "currency",
+            currency: "DOP",
+          }).format(amount)}
+        </span>
+      );
+    },
+  },
+  {
     accessorKey: "tipo",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Tipo" />,
     cell: ({ row }) => {
@@ -124,21 +140,5 @@ export const recentMovementsColumns: ColumnDef<z.infer<typeof recentMovementSche
     accessorKey: "categoria",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Categoría" />,
     cell: ({ row }) => <span className="text-muted-foreground">{row.original.categoria || "S/C"}</span>,
-  },
-  {
-    accessorKey: "monto",
-    header: ({ column }) => <DataTableColumnHeader column={column} title="Monto" />,
-    cell: ({ row }) => {
-      const amount = Number(row.original.monto);
-      const isIngreso = row.original.tipo.toLowerCase().includes("ingreso");
-      return (
-        <span className={cn("font-medium tabular-nums", isIngreso ? "text-green-600" : "text-red-600")}>
-          {new Intl.NumberFormat("es-DO", {
-            style: "currency",
-            currency: "DOP",
-          }).format(amount)}
-        </span>
-      );
-    },
   },
 ];

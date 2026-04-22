@@ -6,8 +6,9 @@ import {
   pagosPagosFijos,
   pagosFijos,
   movimientosContables,
+  categoriasCuentas,
 } from "@/lib/db/schema";
-import { desc, eq, and, sql, isNull, gte } from "drizzle-orm";
+import { desc, eq, and, sql, isNull, gte, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -16,6 +17,13 @@ export async function GET(req: Request) {
     // Optional date filtering
     // const startDate = searchParams.get("startDate");
     // const endDate = searchParams.get("endDate");
+
+    const traspasoCat = await db
+      .select({ id: categoriasCuentas.id })
+      .from(categoriasCuentas)
+      .where(eq(categoriasCuentas.codigo, "TRASP-001"))
+      .limit(1);
+    const traspasoCatId = traspasoCat[0]?.id ?? null;
 
     // 1. Fetch Supplier Payments (Pagos a Proveedores)
     const supplierPaymentsPromise = db
@@ -61,7 +69,15 @@ export async function GET(req: Request) {
         cuentaPorPagarId: movimientosContables.cuentaPorPagarId,
       })
       .from(movimientosContables)
-      .where(and(eq(movimientosContables.tipo, "gasto"), isNull(movimientosContables.cuentaPorPagarId)));
+      .where(
+        traspasoCatId
+          ? and(
+              eq(movimientosContables.tipo, "gasto"),
+              isNull(movimientosContables.cuentaPorPagarId),
+              ne(movimientosContables.categoriaId, traspasoCatId),
+            )
+          : and(eq(movimientosContables.tipo, "gasto"), isNull(movimientosContables.cuentaPorPagarId)),
+      );
 
     const [supplierPayments, fixedPayments, generalExpenses] = await Promise.all([
       supplierPaymentsPromise,
@@ -106,60 +122,60 @@ export async function GET(req: Request) {
       })),
     ];
 
-    // Sort by Date Descending
-    normalizedExpenses.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime());
-
-    // Calculate Daily Stats for Chart (Current Month)
+    // Determine month bounds
     const today = new Date();
     const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    lastDayOfMonth.setHours(23, 59, 59, 999);
 
-    // Helper to check if date is in current month
-    const isCurrentMonth = (d: Date | string) => {
-      const dateObj = new Date(d);
-      return dateObj >= firstDayOfMonth && dateObj <= today;
-    };
+    // Helper to safely parse dates and check month
+    const parseSafeDate = (d: Date | string) => new Date(d instanceof Date ? d : (d + "T00:00:00Z"));
+    
+    // Filter to current month ONLY
+    const monthlyExpenses = normalizedExpenses.filter((exp) => {
+      const dateObj = parseSafeDate(exp.fecha);
+      return dateObj >= firstDayOfMonth && dateObj <= lastDayOfMonth;
+    });
+
+    // Sort by Date Descending
+    monthlyExpenses.sort((a, b) => parseSafeDate(b.fecha).getTime() - parseSafeDate(a.fecha).getTime());
 
     const dailyMap = new Map<string, number>();
 
-    normalizedExpenses.forEach((exp) => {
-      if (isCurrentMonth(exp.fecha)) {
-        const day = new Date(exp.fecha).toISOString().split("T")[0];
-        const current = dailyMap.get(day) || 0;
-        dailyMap.set(day, current + exp.monto);
-      }
+    monthlyExpenses.forEach((exp) => {
+      const dateObj = parseSafeDate(exp.fecha);
+      const day = dateObj.toISOString().split("T")[0];
+      const current = dailyMap.get(day) || 0;
+      dailyMap.set(day, current + exp.monto);
     });
 
     const dailyStats = Array.from(dailyMap.entries())
       .map(([date, total]) => ({ date, total }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Summary Stats (Current Month Only)
-    // normalizedExpenses `fecha` is already a Date object or string.
-    // We need to be careful with types here. normalizedExpenses definition above maps p.fecha.
-    // p.fecha from table is Date usually. But generalExpenses maps `new Date(p.fecha)`.
-    // Let's ensure standard comparison.
-
-    const currentMonthExpenses = normalizedExpenses.filter((exp) => {
-      const d = new Date(exp.fecha);
-      return d >= firstDayOfMonth && d <= today;
-    });
-
-    const totalAmount = currentMonthExpenses.reduce((sum, item) => sum + item.monto, 0);
-    const count = currentMonthExpenses.length;
+    // Summary Stats
+    const totalAmount = monthlyExpenses.reduce((sum, item) => sum + item.monto, 0);
+    const count = monthlyExpenses.length;
     const average = count > 0 ? totalAmount / count : 0;
 
     return NextResponse.json({
       success: true,
-      data: normalizedExpenses,
+      data: monthlyExpenses.map((exp) => ({
+        ...exp,
+        fecha: parseSafeDate(exp.fecha).toLocaleDateString("es-DO"),
+      })),
       dailyStats,
       summary: {
-        total: totalAmount,
+        total: Math.round(totalAmount * 100) / 100,
         count,
-        average,
+        average: Math.round(average * 100) / 100,
       },
     });
   } catch (error: any) {
     console.error("Error fetching expenses:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error.message || "Error al cargar gastos" },
+      { status: 500 },
+    );
   }
 }

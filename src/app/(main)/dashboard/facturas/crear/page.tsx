@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+
 import {
   FileText,
   Calendar,
@@ -15,17 +16,16 @@ import {
   ChevronRight,
   Search,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-
-const USUARIO_ID = "df4b1335-5ff6-4703-8dcd-3e2f74fb0822"; 
 
 const formatCurrency = (v: string | number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(v));
@@ -46,46 +46,91 @@ const MESES = [
 ];
 
 export default function CrearFacturasPage() {
+  const hoy = new Date();
+  const mesActual = hoy.getMonth() + 1;
+  const anioActual = hoy.getFullYear();
+  const mesSiguienteInicial = mesActual === 12 ? 1 : mesActual + 1;
+  const anioSiguienteInicial = mesActual === 12 ? anioActual + 1 : anioActual;
+
   const [suscripciones, setSuscripciones] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [diasDisponibles, setDiasDisponibles] = useState<number[]>([]);
+  const [loadingDias, setLoadingDias] = useState(true);
+  const [usuarioId, setUsuarioId] = useState<string>("");
 
   // Filtros
-  const [diaFacturacion, setDiaFacturacion] = useState<string>("1");
+  const [diaFacturacion, setDiaFacturacion] = useState<string>("");
   const [mesSeleccionado, setMesSeleccionado] = useState<number>(new Date().getMonth() + 1);
   const [anioSeleccionado, setAnioSeleccionado] = useState<number>(new Date().getFullYear());
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [itbisManual, setItbisManual] = useState<number>(0);
+  const [descuentoManualMonto, setDescuentoManualMonto] = useState<number>(0);
+  const [pagoAdelantadoUnMes, setPagoAdelantadoUnMes] = useState<boolean>(false);
+  const [mesAdelantado, setMesAdelantado] = useState<number>(mesSiguienteInicial);
+  const [anioAdelantado, setAnioAdelantado] = useState<number>(anioSiguienteInicial);
 
   // Selección
   const [suscripcionesSeleccionadas, setSuscripcionesSeleccionadas] = useState<Set<string>>(new Set());
 
-  const cargarSuscripciones = useCallback(async () => {
-    if (!diaFacturacion) return;
+  // Loading billing days on mount
+  useEffect(() => {
+    fetch("/api/facturas/dias-facturacion")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && Array.isArray(res.data)) {
+          setDiasDisponibles(res.data);
+          if (res.data.length > 0) {
+            setDiaFacturacion(String(res.data[0]));
+          }
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingDias(false));
 
-    setIsLoading(true);
-    try {
-      const res = await fetch(`/api/suscripciones/por-dia-facturacion?diaFacturacion=${diaFacturacion}`);
-      const data = await res.json();
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data?.profile?.id) {
+          setUsuarioId(res.data.profile.id);
+        }
+      })
+      .catch(console.error);
+  }, []);
 
-      if (data.success) {
-        setSuscripciones(data.data.suscripciones);
-        setSuscripcionesSeleccionadas(new Set());
-      } else {
-        toast.error(data.error || "Error al cargar suscripciones");
+  const cargarSuscripciones = useCallback(
+    async (search = "") => {
+      // Si no hay día ni búsqueda, no hacemos nada
+      if (!diaFacturacion && !search) return;
+
+      setIsLoading(true);
+      try {
+        const url = `/api/suscripciones/por-dia-facturacion?${diaFacturacion ? `diaFacturacion=${diaFacturacion}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`;
+        const res = await fetch(url.replace("?&", "?"));
+        const data = await res.json();
+
+        if (data.success) {
+          setSuscripciones(data.data.suscripciones);
+          setSuscripcionesSeleccionadas(new Set());
+        } else {
+          toast.error(data.error || "Error al cargar suscripciones");
+        }
+      } catch (error) {
+        toast.error("Error de conexión");
+      } finally {
+        setIsLoading(false);
       }
-    } catch (error) {
-      toast.error("Error de conexión");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [diaFacturacion]);
+    },
+    [diaFacturacion],
+  );
 
   useEffect(() => {
-    if (diaFacturacion) {
-      cargarSuscripciones();
-    }
-  }, [diaFacturacion, cargarSuscripciones]);
+    const timer = setTimeout(() => {
+      cargarSuscripciones(searchQuery);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, diaFacturacion, cargarSuscripciones]);
 
   const toggleSuscripcion = (id: string) => {
     const nuevas = new Set(suscripcionesSeleccionadas);
@@ -119,17 +164,26 @@ export default function CrearFacturasPage() {
 
   const calcularDetallesSeleccion = () => {
     const seleccionadas = suscripciones.filter((s) => suscripcionesSeleccionadas.has(s.id));
-    
+
     const subtotalTotal = seleccionadas.reduce((acc, s) => {
       const precio = Number(s.precio_mensual || 0);
       const descuento = (precio * Number(s.descuento_aplicado || 0)) / 100;
       return acc + (precio - descuento);
     }, 0);
 
-    const itbisTotal = subtotalTotal * (itbisManual / 100);
-    const totalFinal = subtotalTotal + itbisTotal;
+    const descuentoAplicable = seleccionadas.length > 0 ? descuentoManualMonto : 0;
+    const subtotalTrasDescuentoManual = Math.max(0, subtotalTotal - descuentoAplicable);
+    const itbisTotal = subtotalTrasDescuentoManual * (itbisManual / 100);
+    const totalFinal = subtotalTrasDescuentoManual + itbisTotal;
 
-    return { subtotalTotal, itbisTotal, totalFinal, count: seleccionadas.length };
+    return {
+      subtotalTotal,
+      descuentoManualAplicado: Math.min(descuentoAplicable, subtotalTotal),
+      subtotalTrasDescuentoManual,
+      itbisTotal,
+      totalFinal,
+      count: seleccionadas.length,
+    };
   };
 
   const crearFacturas = async () => {
@@ -147,8 +201,12 @@ export default function CrearFacturasPage() {
           suscripcionIds: Array.from(suscripcionesSeleccionadas),
           mesPeriodo: mesSeleccionado,
           anioPeriodo: anioSeleccionado,
-          usuarioId: USUARIO_ID,
+          usuarioId: usuarioId || undefined,
           itbisPorcentaje: itbisManual,
+          descuentoManualMonto: puedeAplicarDescuentoManual && descuentoManualMonto >= 1 ? descuentoManualMonto : 0,
+          pagoAdelantadoUnMes,
+          mesAdelantado: pagoAdelantadoUnMes ? mesAdelantado : undefined,
+          anioAdelantado: pagoAdelantadoUnMes ? anioAdelantado : undefined,
         }),
       });
 
@@ -161,7 +219,7 @@ export default function CrearFacturasPage() {
           // Mostrar detalles de los errores
           if (data.data.errores && data.data.errores.length > 0) {
             data.data.errores.forEach((err: any) => {
-              toast.error(`${err.numeroContrato || 'Sin contrato'}: ${err.error}`);
+              toast.error(`${err.numeroContrato || "Sin contrato"}: ${err.error}`);
             });
           }
         }
@@ -212,19 +270,38 @@ export default function CrearFacturasPage() {
     return opciones;
   };
 
-  // Filtrar suscripciones por búsqueda
-  const filteredSuscripciones = suscripciones.filter((sus) => {
-    if (!searchQuery.trim()) return true;
-    
-    const query = searchQuery.toLowerCase();
-    const nombreCompleto = `${sus.cliente_nombre} ${sus.cliente_apellidos}`.toLowerCase();
-    const monto = Number(sus.precio_mensual || 0).toString();
-    
-    return nombreCompleto.includes(query) || monto.includes(query);
-  });
+  // La búsqueda ahora es en el servidor, así que filteredSuscripciones es básicamente suscripciones
+  const filteredSuscripciones = suscripciones;
+
+  const clientesSeleccionados = new Set(
+    suscripciones.filter((s) => suscripcionesSeleccionadas.has(s.id)).map((s) => s.cliente_id),
+  );
+  const puedeAplicarDescuentoManual = clientesSeleccionados.size === 1;
 
   const detallesSeleccion = calcularDetallesSeleccion();
   const opcionesMes = generarOpcionesMes();
+
+  const setPeriodoMesSiguiente = () => {
+    setMesAdelantado(mesSiguienteInicial);
+    setAnioAdelantado(anioSiguienteInicial);
+    setMesSeleccionado(mesSiguienteInicial);
+    setAnioSeleccionado(anioSiguienteInicial);
+  };
+
+  useEffect(() => {
+    if (pagoAdelantadoUnMes) {
+      setMesSeleccionado(mesAdelantado);
+      setAnioSeleccionado(anioAdelantado);
+    }
+  }, [pagoAdelantadoUnMes, mesAdelantado, anioAdelantado]);
+
+  const aniosAdelantado = Array.from({ length: 4 }, (_, i) => anioActual + i);
+
+  useEffect(() => {
+    if (!puedeAplicarDescuentoManual && descuentoManualMonto !== 0) {
+      setDescuentoManualMonto(0);
+    }
+  }, [puedeAplicarDescuentoManual, descuentoManualMonto]);
 
   return (
     <div className="animate-in fade-in bg-background mx-auto flex min-h-screen max-w-7xl flex-col gap-6 p-6 duration-500">
@@ -261,12 +338,12 @@ export default function CrearFacturasPage() {
                   <Label className="text-muted-foreground text-[10px] font-black tracking-wider uppercase">
                     Día de Facturación
                   </Label>
-                  <Select value={diaFacturacion} onValueChange={setDiaFacturacion}>
+                  <Select value={diaFacturacion} onValueChange={setDiaFacturacion} disabled={loadingDias}>
                     <SelectTrigger className="h-10">
-                      <SelectValue placeholder="Seleccionar día..." />
+                      <SelectValue placeholder={loadingDias ? "Cargando días..." : "Seleccionar día..."} />
                     </SelectTrigger>
                     <SelectContent className="max-h-60">
-                      {Array.from({ length: 31 }, (_, i) => i + 1).map((dia) => (
+                      {diasDisponibles.map((dia) => (
                         <SelectItem key={dia} value={String(dia)}>
                           Día {dia} de cada mes
                         </SelectItem>
@@ -287,7 +364,7 @@ export default function CrearFacturasPage() {
                       setAnioSeleccionado(anio);
                     }}
                   >
-                    <SelectTrigger className="h-10">
+                    <SelectTrigger className="h-10" disabled={pagoAdelantadoUnMes}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -357,7 +434,9 @@ export default function CrearFacturasPage() {
                 <div className="space-y-3 py-12 text-center opacity-40">
                   <Users className="mx-auto h-10 w-10 text-slate-400" />
                   <p className="text-muted-foreground text-sm font-medium">
-                    {searchQuery ? "No se encontraron resultados" : `No hay suscripciones activas para el día ${diaFacturacion}`}
+                    {searchQuery
+                      ? "No se encontraron resultados"
+                      : `No hay suscripciones activas para el día ${diaFacturacion}`}
                   </p>
                 </div>
               ) : (
@@ -396,9 +475,7 @@ export default function CrearFacturasPage() {
                             <div className="text-right">
                               <div className="text-base font-black text-slate-900">{formatCurrency(total)}</div>
                               {descuento > 0 && (
-                                <div className="text-muted-foreground text-[9px]">
-                                  Desc. {sus.descuento_aplicado}%
-                                </div>
+                                <div className="text-muted-foreground text-[9px]">Desc. {sus.descuento_aplicado}%</div>
                               )}
                             </div>
                           </div>
@@ -424,7 +501,7 @@ export default function CrearFacturasPage() {
         <div className="space-y-6 lg:col-span-4">
           <Card className="overflow-hidden border shadow-md">
             <CardHeader className="bg-slate-900 px-5 py-4 text-white dark:bg-slate-800">
-              <CardTitle className="flex items-center gap-2 text-xs font-black tracking-widest uppercase text-white">
+              <CardTitle className="flex items-center gap-2 text-xs font-black tracking-widest text-white uppercase">
                 <DollarSign className="h-3.5 w-3.5" /> Resumen
               </CardTitle>
             </CardHeader>
@@ -461,13 +538,56 @@ export default function CrearFacturasPage() {
                         </span>
                       </div>
                       <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground dark:text-slate-400">
-                          ITBIS ({itbisManual}%):
+                        <span className="text-muted-foreground dark:text-slate-400">Desc. Manual:</span>
+                        <span className="font-semibold text-emerald-700 dark:text-emerald-300">
+                          -{formatCurrency(detallesSeleccion.descuentoManualAplicado)}
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground dark:text-slate-400">ITBIS ({itbisManual}%):</span>
                         <span className="font-semibold text-slate-700 dark:text-white">
                           {formatCurrency(detallesSeleccion.itbisTotal)}
                         </span>
                       </div>
+                    </div>
+
+                    <div className="space-y-2 rounded-lg border border-emerald-100 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950">
+                      <div className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                        Descuento Manual del Cliente
+                      </div>
+                      <Input
+                        type="number"
+                        min="1"
+                        step="1"
+                        disabled={!puedeAplicarDescuentoManual || detallesSeleccion.count === 0}
+                        placeholder={
+                          puedeAplicarDescuentoManual
+                            ? "Ingrese descuento desde RD$1"
+                            : "Seleccione suscripciones de un solo cliente"
+                        }
+                        className="h-10 bg-white dark:bg-slate-900"
+                        value={descuentoManualMonto || ""}
+                        onChange={(e) => {
+                          const valor = Number(e.target.value);
+                          if (!e.target.value) {
+                            setDescuentoManualMonto(0);
+                            return;
+                          }
+
+                          if (valor < 1) {
+                            setDescuentoManualMonto(0);
+                            return;
+                          }
+
+                          setDescuentoManualMonto(valor);
+                        }}
+                      />
+                      {!puedeAplicarDescuentoManual && detallesSeleccion.count > 0 && (
+                        <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">
+                          El descuento manual solo se habilita cuando las suscripciones seleccionadas pertenecen a un
+                          solo cliente.
+                        </p>
+                      )}
                     </div>
 
                     <div className="space-y-2 rounded-lg border border-blue-100 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950">
@@ -490,6 +610,68 @@ export default function CrearFacturasPage() {
                           ))}
                       </div>
                     </div>
+
+                    <div className="space-y-2 rounded-lg border border-sky-100 bg-sky-50 p-3 dark:border-sky-900 dark:bg-sky-950">
+                      <div className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
+                        Pago Adelantado
+                      </div>
+                      <label className="flex cursor-pointer items-start gap-2 text-xs text-sky-800 dark:text-sky-200">
+                        <Checkbox
+                          checked={pagoAdelantadoUnMes}
+                          onCheckedChange={(checked) => {
+                            const enabled = checked === true;
+                            setPagoAdelantadoUnMes(enabled);
+                            if (enabled) {
+                              setPeriodoMesSiguiente();
+                            }
+                          }}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          Marcar facturas como <strong>PAGO ADELANTADO (1 MES)</strong> y seleccionar el mes específico
+                          que el cliente está pagando.
+                        </span>
+                      </label>
+
+                      {pagoAdelantadoUnMes && (
+                        <div className="grid gap-3 md:grid-cols-2">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
+                              Mes Adelantado
+                            </Label>
+                            <Select value={String(mesAdelantado)} onValueChange={(v) => setMesAdelantado(Number(v))}>
+                              <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {MESES.map((mes) => (
+                                  <SelectItem key={mes.value} value={String(mes.value)}>
+                                    {mes.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
+                              Año Adelantado
+                            </Label>
+                            <Select value={String(anioAdelantado)} onValueChange={(v) => setAnioAdelantado(Number(v))}>
+                              <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {aniosAdelantado.map((anio) => (
+                                  <SelectItem key={anio} value={String(anio)}>
+                                    {anio}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </>
                 )}
 
@@ -498,7 +680,7 @@ export default function CrearFacturasPage() {
                   <span className="text-xs font-black tracking-tighter text-slate-800 uppercase dark:text-white">
                     Total a Facturar:
                   </span>
-                  <span className="text-primary text-xl font-black dark:text-primary">
+                  <span className="text-primary dark:text-primary text-xl font-black">
                     {formatCurrency(detallesSeleccion.totalFinal)}
                   </span>
                 </div>
@@ -541,6 +723,10 @@ export default function CrearFacturasPage() {
               <li className="flex items-start gap-2">
                 <ChevronRight className="mt-0.5 h-3 w-3 flex-shrink-0" />
                 Se crea automáticamente la cuenta por cobrar
+              </li>
+              <li className="flex items-start gap-2">
+                <ChevronRight className="mt-0.5 h-3 w-3 flex-shrink-0" />
+                Puede marcar la factura como pago adelantado de 1 mes
               </li>
             </ul>
           </div>

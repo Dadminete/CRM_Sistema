@@ -14,7 +14,7 @@ import "./globals.css";
 const inter = Inter({ 
   subsets: ["latin"],
   display: "swap",
-  preload: true,
+  preload: false,
 });
 
 export const metadata: Metadata = {

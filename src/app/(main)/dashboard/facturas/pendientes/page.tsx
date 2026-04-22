@@ -1,21 +1,30 @@
 "use client";
 
 import * as React from "react";
+
+import { useSearchParams } from "next/navigation";
+
 import { FileText, TrendingDown, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
 import { DataTable } from "./_components/data-table";
 import { Invoice } from "./_components/schema";
 
 export default function PendingInvoicesPage() {
+  const searchParams = useSearchParams();
+  const clienteIdParam = searchParams.get("clienteId") || "";
+
   const [data, setData] = React.useState<Invoice[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [startDate, setStartDate] = React.useState("");
   const [endDate, setEndDate] = React.useState("");
   const [billingDay, setBillingDay] = React.useState("");
+  const [clienteId, setClienteId] = React.useState(clienteIdParam);
 
-  const fetchData = React.useCallback(async (start?: string, end?: string, day?: string) => {
+  const fetchData = React.useCallback(async (start?: string, end?: string, day?: string, cid?: string) => {
     setLoading(true);
     try {
       let url = "/api/facturas/pendientes";
@@ -23,6 +32,7 @@ export default function PendingInvoicesPage() {
       if (start) params.append("startDate", start);
       if (end) params.append("endDate", end);
       if (day) params.append("billingDay", day);
+      if (cid) params.append("clienteId", cid);
 
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -44,8 +54,8 @@ export default function PendingInvoicesPage() {
   }, []);
 
   React.useEffect(() => {
-    fetchData(startDate, endDate, billingDay);
-  }, [fetchData, startDate, endDate, billingDay]);
+    fetchData(startDate, endDate, billingDay, clienteId);
+  }, [fetchData, startDate, endDate, billingDay, clienteId]);
 
   const handleDateChange = (start: string, end: string) => {
     setStartDate(start);
@@ -76,7 +86,7 @@ export default function PendingInvoicesPage() {
           <Button
             variant="outline"
             className="h-11 gap-2 px-4 font-semibold"
-            onClick={() => fetchData(startDate, endDate, billingDay)}
+            onClick={() => fetchData(startDate, endDate, billingDay, clienteId)}
           >
             <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Actualizar
@@ -124,6 +134,7 @@ export default function PendingInvoicesPage() {
           startDate={startDate}
           endDate={endDate}
           billingDay={billingDay}
+          onInvoiceChanged={() => fetchData(startDate, endDate, billingDay)}
         />
       </div>
     </div>

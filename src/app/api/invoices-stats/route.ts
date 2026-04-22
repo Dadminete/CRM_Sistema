@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { eq, gte, or, sql } from "drizzle-orm";
+
 import { db } from "@/lib/db";
-import { facturasClientes, cuentasPorCobrar, pagosClientes } from "@/lib/db/schema";
-import { eq, sql, or, gte } from "drizzle-orm";
+import { cuentasPorCobrar, facturasClientes, pagosClientes } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,8 @@ export async function GET() {
           eq(facturasClientes.estado, "pendiente"),
           eq(facturasClientes.estado, "parcial"),
           eq(facturasClientes.estado, "pago parcial"),
+          eq(facturasClientes.estado, "adelantado"),
+          eq(facturasClientes.estado, "pago adelantado"),
         ),
       );
 
@@ -32,11 +35,11 @@ export async function GET() {
       const monto = Number(b.montoPendiente || 0);
       const estado = b.facturaEstado?.toLowerCase() || "";
 
-      // Todas estas cuentan para el total pendiente
+      // El total pendiente PRINCIPAL es la suma de TODO lo que se debe
       totalPendiente += monto;
 
-      // Solo las de pago parcial/parcial cuentan para el sub-monto "Monto Parcial"
-      if (estado === "parcial" || estado === "pago parcial") {
+      // Mantener totalParcial por separado para el desglose visual (opcional si se usa en la UI)
+      if (estado === "parcial" || estado === "pago parcial" || estado === "adelantado" || estado === "pago adelantado") {
         totalParcial += monto;
       }
     });
@@ -68,8 +71,16 @@ export async function GET() {
         stats,
       },
     });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching invoice stats:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        error: message,
+        data: { totalPendiente: 0, totalParcial: 0, stats: [] },
+      },
+      { status: 200 },
+    );
   }
 }

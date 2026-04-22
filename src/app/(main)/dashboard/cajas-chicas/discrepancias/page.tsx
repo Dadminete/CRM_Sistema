@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   AlertCircle,
   CheckCircle2,
@@ -16,12 +19,11 @@ import {
   History as HistoryIcon,
   Wallet,
 } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
+import { toast } from "sonner";
+
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { formatCurrency, cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { es } from "date-fns/locale";
-import { Input } from "@/components/ui/input";
+import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -30,19 +32,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-
-const USUARIO_ID = "df4b1335-5ff6-4703-8dcd-3e2f74fb0822"; // Hardcoded for shared context
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
+import { formatCurrency, cn } from "@/lib/utils";
 
 export default function DiscrepanciasPage() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const [usuarioId, setUsuarioId] = useState<string>("");
 
   // Modal states
   const [selectedSession, setSelectedSession] = useState<any>(null);
@@ -67,6 +68,15 @@ export default function DiscrepanciasPage() {
   useEffect(() => {
     fetchSessions();
     fetchCategories();
+
+    fetch("/api/profile")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.data?.profile?.id) {
+          setUsuarioId(res.data.profile.id);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const fetchSessions = async () => {
@@ -161,7 +171,7 @@ export default function DiscrepanciasPage() {
         body: JSON.stringify({
           sessionId: selectedSession.id,
           ...resolutionForm,
-          usuarioId: USUARIO_ID,
+          usuarioId: usuarioId || undefined,
         }),
       });
       const data = await res.json();

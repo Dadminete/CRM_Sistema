@@ -1,35 +1,31 @@
 "use client";
 
 import { useState, useEffect } from "react";
+
 import { format, subMonths } from "date-fns";
-import { Wallet, BadgeDollarSign, FileText, TrendingUp } from "lucide-react";
+import { Wallet, BadgeDollarSign, FileText, TrendingUp, Landmark } from "lucide-react";
 import { Area, AreaChart, Line, LineChart, Bar, BarChart, XAxis } from "recharts";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 
-import {
-  leadsChartData,
-  leadsChartConfig,
-  proposalsChartData,
-  proposalsChartConfig,
-  revenueChartData,
-  revenueChartConfig,
-} from "./crm.config";
+// --- Interfaces ---
+interface ChartDataPoint {
+  fecha: string;
+  ingresos: number;
+  gastos: number;
+}
 
 interface CajaPrincipalData {
   balanceActual: number;
   gastosDelMes: number;
   estado: string;
-  ultimosDias: {
-    fecha: string;
-    ingresos: number;
-    gastos: number;
-  }[];
+  ultimosDias: ChartDataPoint[];
 }
 
 interface PapeleriaData {
+  balanceActual: number;
   ventasDelMes: number;
   gastosDelMes: number;
   estado: string;
@@ -40,93 +36,78 @@ interface PapeleriaData {
   }[];
 }
 
+interface BankAccountsData {
+  saldoTotal: number;
+  ultimosMeses: {
+    mes: string;
+    ingresos: number;
+    gastos: number;
+    balance: number;
+  }[];
+}
+
+interface InvoicesStatsData {
+  totalPendiente: number;
+  totalParcial: number;
+  stats: {
+    fecha: string;
+    ingresos: number;
+  }[];
+}
+
+interface NetIncomeData {
+  totalNetoMensual: number;
+}
+
+interface DashboardOverviewData {
+  cajaPrincipal: CajaPrincipalData | null;
+  papeleria: PapeleriaData | null;
+  banks: BankAccountsData | null;
+  invoices: InvoicesStatsData | null;
+  netIncome: NetIncomeData | null;
+}
+
+// --- Shared Components ---
 function StatusBadge({ status }: { status?: string }) {
   const isOpen = status === "abierta";
   return (
     <div
-      className={`flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase ${
+      className={cn(
+        "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-medium tracking-wider uppercase",
         isOpen
           ? "bg-green-500/10 text-green-500 ring-1 ring-green-500/20 ring-inset"
-          : "bg-red-500/10 text-red-500 ring-1 ring-red-500/20 ring-inset"
-      }`}
+          : "bg-red-500/10 text-red-500 ring-1 ring-red-500/20 ring-inset",
+      )}
     >
-      <div className={`size-1 rounded-full ${isOpen ? "animate-pulse bg-green-500" : "bg-red-500"}`} />
+      <div className={cn("size-1 rounded-full", isOpen ? "animate-pulse bg-green-500" : "bg-red-500")} />
       {isOpen ? "Abierta" : "Cerrada"}
     </div>
   );
 }
 
+function LoadingCard({ title, description }: { title: string; description?: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        {description && <CardDescription>{description}</CardDescription>}
+      </CardHeader>
+      <CardContent className="flex size-full items-center justify-center py-10">
+        <span className="text-muted-foreground animate-pulse text-sm">Cargando...</span>
+      </CardContent>
+    </Card>
+  );
+}
+
+// --- Specific Cards ---
+
 const cajaPrincipalChartConfig = {
-  ingresos: {
-    label: "Ingresos",
-    color: "var(--chart-1)",
-  },
-  gastos: {
-    label: "Gastos",
-    color: "hsl(0, 84%, 60%)", // Red color for expenses
-  },
-  background: {
-    color: "var(--primary)",
-  },
+  ingresos: { label: "Ingresos", color: "var(--chart-1)" },
+  gastos: { label: "Gastos", color: "hsl(0, 84%, 60%)" },
 };
 
-function CajaPrincipalCard() {
-  const [data, setData] = useState<CajaPrincipalData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch("/api/caja-principal");
-        const result = await response.json();
-        if (result.success) {
-          setData(result.data);
-        }
-      } catch (error) {
-        console.error("Error fetching Caja Principal data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Caja Principal</CardTitle>
-          <CardDescription>ultimos dias</CardDescription>
-        </CardHeader>
-        <CardContent className="flex size-full items-center justify-center">
-          <span className="text-muted-foreground text-sm">Cargando...</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle>Caja Principal</CardTitle>
-          <CardDescription>ultimos dias</CardDescription>
-        </CardHeader>
-        <CardContent className="flex size-full items-center justify-center">
-          <span className="text-muted-foreground text-sm">No hay datos disponibles</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+function CajaPrincipalCard({ data }: { data: CajaPrincipalData | null }) {
+  if (!data) return <LoadingCard title="Caja Principal" description="ultimos dias" />;
 
   return (
     <Card>
@@ -135,7 +116,7 @@ function CajaPrincipalCard() {
           <CardTitle>Caja Principal</CardTitle>
           <CardDescription>ultimos dias</CardDescription>
         </div>
-        {!loading && data && <StatusBadge status={data.estado} />}
+        <StatusBadge status={data.estado} />
       </CardHeader>
       <CardContent className="size-full">
         <ChartContainer className="size-full min-h-24" config={cajaPrincipalChartConfig}>
@@ -147,7 +128,6 @@ function CajaPrincipalCard() {
               dataKey="ingresos"
               stackId="a"
               fill="var(--color-ingresos)"
-              radius={[0, 0, 0, 0]}
             />
             <Bar dataKey="gastos" stackId="a" fill="var(--color-gastos)" radius={[4, 4, 0, 0]} />
           </BarChart>
@@ -162,69 +142,12 @@ function CajaPrincipalCard() {
 }
 
 const papeleriaChartConfig = {
-  ventas: {
-    label: "Ventas",
-    color: "var(--chart-1)",
-  },
+  ventas: { label: "Ventas", color: "var(--chart-1)" },
+  gastos: { label: "Gastos", color: "hsl(0, 84%, 60%)" },
 };
 
-function PapeleriaCard() {
-  const [data, setData] = useState<PapeleriaData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch("/api/papeleria-stats");
-        const result = await response.json();
-        if (result.success) {
-          setData(result.data);
-        }
-      } catch (error) {
-        console.error("Error fetching Papeleria data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <Card className="overflow-hidden pb-0">
-        <CardHeader>
-          <CardTitle>Papeleria</CardTitle>
-          <CardDescription>Mes Actual</CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-h-24 flex-1 items-center justify-center p-0">
-          <span className="text-muted-foreground text-sm">Cargando...</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data) {
-    return (
-      <Card className="overflow-hidden pb-0">
-        <CardHeader>
-          <CardTitle>Papeleria</CardTitle>
-          <CardDescription>Mes Actual</CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-h-24 flex-1 items-center justify-center p-0">
-          <span className="text-muted-foreground text-sm">No hay datos disponibles</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
+function PapeleriaCard({ data }: { data: PapeleriaData | null }) {
+  if (!data) return <LoadingCard title="Papeleria" description="Mes Actual" />;
 
   return (
     <Card className="overflow-hidden pb-0">
@@ -233,18 +156,11 @@ function PapeleriaCard() {
           <CardTitle>Papeleria</CardTitle>
           <CardDescription>Mes Actual</CardDescription>
         </div>
-        {!loading && data && <StatusBadge status={data.estado} />}
+        <StatusBadge status={data.estado} />
       </CardHeader>
       <CardContent className="flex-1 p-0">
         <ChartContainer className="size-full min-h-24" config={papeleriaChartConfig}>
-          <AreaChart
-            data={data.ultimosDias}
-            margin={{
-              left: 0,
-              right: 0,
-              top: 5,
-            }}
-          >
+          <AreaChart data={data.ultimosDias} margin={{ left: 0, right: 0, top: 5 }}>
             <XAxis dataKey="fecha" tickLine={false} tickMargin={10} axisLine={false} hide />
             <ChartTooltip
               content={<ChartTooltipContent labelFormatter={(label) => `Fecha: ${label}`} hideIndicator />}
@@ -257,212 +173,79 @@ function PapeleriaCard() {
               strokeWidth={2}
               type="monotone"
             />
+            <Line dataKey="gastos" type="monotone" stroke="var(--color-gastos)" strokeWidth={2} dot={false} />
           </AreaChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="flex items-center justify-between pt-4">
-        <div className="flex flex-col">
-          <span className="text-muted-foreground text-xs">Ventas</span>
-          <span className="text-lg font-semibold tabular-nums">{formatCurrency(data.ventasDelMes)}</span>
-        </div>
-        <div className="flex flex-col items-end">
-          <span className="text-muted-foreground text-xs">Gastos</span>
-          <span className="text-lg font-semibold text-red-500 tabular-nums">{formatCurrency(data.gastosDelMes)}</span>
-        </div>
+      <CardFooter className="flex items-center justify-between">
+        <span className="text-xl font-semibold tabular-nums">{formatCurrency(data.balanceActual)}</span>
+        <span className="text-sm font-medium text-red-500">{formatCurrency(data.gastosDelMes)}</span>
       </CardFooter>
     </Card>
   );
-}
-
-interface BankAccountsData {
-  saldoTotal: number;
-  ultimosMeses: {
-    mes: string;
-    ingresos: number;
-    gastos: number;
-  }[];
 }
 
 const bankAccountsChartConfig = {
-  ingresos: {
-    label: "Ingresos",
-    color: "var(--chart-1)",
-  },
-  gastos: {
-    label: "Gastos",
-    color: "hsl(0, 84%, 60%)",
-  },
+  balance: { label: "Estado", color: "var(--primary)" },
 };
 
-function BankAccountsCard({ className }: { className?: string }) {
-  const [data, setData] = useState<BankAccountsData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch("/api/bank-stats?t=" + Date.now());
-        const result = await response.json();
-        if (result.success) {
-          setData(result.data);
-        }
-      } catch (error) {
-        console.error("Error fetching Bank Accounts data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  if (loading) {
-    return (
-      <Card className={cn("overflow-hidden pb-0", className)}>
-        <CardHeader>
-          <CardTitle>Cuentas Bancarias</CardTitle>
-          <CardDescription>Ultimos 3 Meses</CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-h-24 flex-1 items-center justify-center p-0">
-          <span className="text-muted-foreground text-sm">Cargando...</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!data) {
-    return (
-      <Card className={cn("overflow-hidden pb-0", className)}>
-        <CardHeader>
-          <CardTitle>Cuentas Bancarias</CardTitle>
-          <CardDescription>Ultimos 3 Meses</CardDescription>
-        </CardHeader>
-        <CardContent className="flex min-h-24 flex-1 items-center justify-center p-0">
-          <span className="text-muted-foreground text-sm">No hay datos disponibles</span>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(value);
-  };
+function BankAccountsCard({ data, className }: { data: BankAccountsData | null; className?: string }) {
+  if (!data) return <LoadingCard title="Cuentas Bancarias" description="Ultimos 3 Meses" />;
 
   return (
-    <Card className={cn("overflow-hidden pb-0", className)}>
-      <CardHeader>
-        <CardTitle>Cuentas Bancarias</CardTitle>
-        <CardDescription>Ultimos 3 Meses</CardDescription>
+    <Card className={cn("flex flex-col overflow-hidden pb-0", className)}>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <div className="flex flex-col gap-1.5">
+          <CardTitle>Cuentas Bancarias</CardTitle>
+          <CardDescription>Estados por Meses</CardDescription>
+        </div>
+        <div className="bg-primary/10 w-fit rounded-lg p-2">
+          <Landmark className="text-primary size-5" />
+        </div>
       </CardHeader>
-      <CardContent>
-        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data.saldoTotal)}</p>
-        <ChartContainer config={bankAccountsChartConfig} className="mx-auto mt-4 h-24 w-[92%]">
-          <LineChart
-            data={data.ultimosMeses}
-            margin={{
-              top: 5,
-              right: 10,
-              left: 10,
-              bottom: 0,
-            }}
-          >
-            <XAxis dataKey="mes" tickLine={false} tickMargin={10} axisLine={false} hide />
-            <ChartTooltip content={<ChartTooltipContent />} />
-            <Line
-              type="monotone"
-              strokeWidth={2}
-              dataKey="ingresos"
-              stroke="var(--color-ingresos)"
-              activeDot={{
-                r: 4,
-              }}
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <div className="flex items-baseline gap-2">
+          <p className="text-3xl font-bold tracking-tight tabular-nums">{formatCurrency(data.saldoTotal)}</p>
+          <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">Total</span>
+        </div>
+        <ChartContainer config={bankAccountsChartConfig} className="mt-auto h-32 w-full">
+          <AreaChart data={data.ultimosMeses} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>
+            <defs>
+              <linearGradient id="colorBalance" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--color-balance)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--color-balance)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <XAxis dataKey="mes" tickLine={false} tickMargin={10} axisLine={false} tick={{ fontSize: 10 }} />
+            <ChartTooltip
+              content={
+                <ChartTooltipContent
+                  labelFormatter={(label) => `Mes: ${label}`}
+                  formatter={(value) => [formatCurrency(Number(value)), "Balance"]}
+                />
+              }
             />
-            <Line
+            <Area
               type="monotone"
-              strokeWidth={2}
-              dataKey="gastos"
-              stroke="var(--color-gastos)"
-              activeDot={{
-                r: 4,
-              }}
+              dataKey="balance"
+              stroke="var(--color-balance)"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#colorBalance)"
+              activeDot={{ r: 6, strokeWidth: 0 }}
             />
-          </LineChart>
+          </AreaChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter>
-        <p className="text-muted-foreground text-sm">Resumen de ingresos y gastos bancarios</p>
+      <CardFooter className="pt-0 pb-4">
+        <p className="text-muted-foreground text-[10px] italic">* Saldo proyectado en base a movimientos históricos</p>
       </CardFooter>
     </Card>
   );
 }
 
-interface InvoicesStatsData {
-  totalPendiente: number;
-  totalParcial: number;
-  stats: {
-    fecha: string;
-    ingresos: number;
-  }[];
-}
-
-const pendingInvoicesChartConfig = {
-  ingresos: {
-    label: "Ingresos",
-    color: "var(--chart-1)",
-  },
-};
-
-function PendingInvoicesCard() {
-  const [data, setData] = useState<InvoicesStatsData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch("/api/invoices-stats");
-        const result = await response.json();
-        if (result.success) {
-          setData(result.data);
-        }
-      } catch (error) {
-        console.error("Error fetching Invoice stats:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <div className="w-fit rounded-lg bg-blue-500/10 p-2">
-            <FileText className="size-5 text-blue-500" />
-          </div>
-        </CardHeader>
-        <CardContent className="flex size-full flex-col justify-between">
-          <div className="space-y-1.5">
-            <CardTitle>Facturas Pendientes</CardTitle>
-            <CardDescription>Cargando...</CardDescription>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+function PendingInvoicesCard({ data }: { data: InvoicesStatsData | null }) {
+  if (!data) return <LoadingCard title="Facturas Pendientes" />;
 
   return (
     <Card className="overflow-hidden pb-0">
@@ -472,20 +255,16 @@ function PendingInvoicesCard() {
             <FileText className="size-5 text-blue-500" />
           </div>
           <div className="w-fit rounded-md bg-yellow-500/10 px-2 py-1 text-[10px] font-medium text-yellow-600">
-            Pendiente Pago Parcial: {formatCurrency(data?.totalParcial || 0)}
+            Parciales: {formatCurrency(data.totalParcial)}
           </div>
         </div>
       </CardHeader>
       <CardContent className="flex-1 p-0">
-        <ChartContainer className="size-full min-h-24" config={pendingInvoicesChartConfig}>
-          <AreaChart
-            data={data?.stats || []}
-            margin={{
-              left: 0,
-              right: 0,
-              top: 5,
-            }}
-          >
+        <ChartContainer
+          className="size-full min-h-24"
+          config={{ ingresos: { label: "Ingresos", color: "var(--chart-1)" } }}
+        >
+          <AreaChart data={data.stats} margin={{ left: 0, right: 0, top: 5 }}>
             <XAxis dataKey="fecha" tickLine={false} tickMargin={10} axisLine={false} hide />
             <ChartTooltip
               content={<ChartTooltipContent labelFormatter={(label) => `Fecha: ${label}`} hideIndicator />}
@@ -503,63 +282,14 @@ function PendingInvoicesCard() {
       </CardContent>
       <CardFooter className="flex flex-col items-start gap-1 pb-4">
         <CardDescription>Facturas Pendientes</CardDescription>
-        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data?.totalPendiente || 0)}</p>
+        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data.totalPendiente)}</p>
       </CardFooter>
     </Card>
   );
 }
 
-interface NetIncomeData {
-  totalNetoMensual: number;
-}
-
-function NetMonthlyIncomeCard() {
-  const [data, setData] = useState<NetIncomeData | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch("/api/net-income");
-        const result = await response.json();
-        if (result.success) {
-          setData(result.data);
-        }
-      } catch (error) {
-        console.error("Error fetching Net Income data:", error);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, []);
-
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat("es-DO", {
-      style: "currency",
-      currency: "DOP",
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(value);
-  };
-
-  if (loading) {
-    return (
-      <Card>
-        <CardHeader>
-          <div className="w-fit rounded-lg bg-green-500/10 p-2">
-            <TrendingUp className="size-5 text-green-500" />
-          </div>
-        </CardHeader>
-        <CardContent className="flex size-full flex-col justify-between">
-          <div className="space-y-1.5">
-            <CardTitle>Ingresos Neto Mensual</CardTitle>
-            <CardDescription>Cargando...</CardDescription>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+function NetMonthlyIncomeCard({ data }: { data: NetIncomeData | null }) {
+  if (!data) return <LoadingCard title="Ingresos Neto Mensual" />;
 
   return (
     <Card>
@@ -573,7 +303,7 @@ function NetMonthlyIncomeCard() {
           <CardTitle>Ingresos Neto Mensual</CardTitle>
           <CardDescription>Suscripciones Activas</CardDescription>
         </div>
-        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data?.totalNetoMensual || 0)}</p>
+        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data.totalNetoMensual)}</p>
         <div className="text-primary bg-primary/10 w-fit rounded-md px-2 py-1 text-[10px] font-medium">
           Facturación Recurrente
         </div>
@@ -582,18 +312,42 @@ function NetMonthlyIncomeCard() {
   );
 }
 
-const lastMonth = format(subMonths(new Date(), 1), "LLLL");
+// --- Main Container ---
 
 export function OverviewCards() {
+  const [data, setData] = useState<DashboardOverviewData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        const response = await fetch("/api/crm/overview?t=" + Date.now(), {
+          cache: "no-store",
+          headers: { "Cache-Control": "no-cache" },
+        });
+        const result = await response.json();
+        if (result.success) {
+          setData(result.data);
+        }
+      } catch (error) {
+        console.error("Error fetching dashboard overview:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+    const interval = setInterval(fetchData, 15000); // 15 seconds for aggregated fetch
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-      <CajaPrincipalCard />
-
-      <PapeleriaCard />
-
-      <PendingInvoicesCard />
-      <BankAccountsCard className="col-span-1 xl:col-span-2" />
-      <NetMonthlyIncomeCard />
+      <CajaPrincipalCard data={data?.cajaPrincipal ?? null} />
+      <PapeleriaCard data={data?.papeleria ?? null} />
+      <PendingInvoicesCard data={data?.invoices ?? null} />
+      <BankAccountsCard data={data?.banks ?? null} className="col-span-1 xl:col-span-2" />
+      <NetMonthlyIncomeCard data={data?.netIncome ?? null} />
     </div>
   );
 }

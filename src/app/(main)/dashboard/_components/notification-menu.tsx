@@ -34,6 +34,7 @@ export function NotificationMenu() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [didWarnUnreadFetchFailure, setDidWarnUnreadFetchFailure] = useState(false);
 
   // Fetch notifications when menu opens
   useEffect(() => {
@@ -42,16 +43,65 @@ export function NotificationMenu() {
     }
   }, [isOpen]);
 
-  // Fetch unread count on mount and every 30 seconds
+  // Fetch unread count on mount and then via SSE (fallback to polling)
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); // Poll every 30s
-    return () => clearInterval(interval);
+
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    let source: EventSource | null = null;
+
+    const startPolling = () => {
+      if (pollInterval) return;
+      pollInterval = setInterval(fetchUnreadCount, 10000); // Fallback: poll every 10s
+    };
+
+    if (typeof window !== "undefined" && "EventSource" in window) {
+      source = new EventSource("/api/notifications/stream");
+      source.addEventListener("notification", (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          const newCount = Number(data.count);
+
+          if (Number.isNaN(newCount)) return;
+
+          setUnreadCount((prev) => {
+            if (newCount > prev) {
+              fetchNotifications();
+              toast("Nueva notificación recibida", {
+                icon: <Bell className="h-4 w-4 text-primary" />,
+              });
+            }
+            return newCount;
+          });
+        } catch {
+          // Ignore invalid SSE payloads
+        }
+      });
+
+      source.onerror = () => {
+        source?.close();
+        source = null;
+        startPolling();
+      };
+    } else {
+      startPolling();
+    }
+
+    return () => {
+      if (source) source.close();
+      if (pollInterval) clearInterval(pollInterval);
+    };
   }, []);
 
   const fetchNotifications = async () => {
     try {
-      const response = await fetch("/api/notifications?limit=10");
+      const response = await fetch("/api/notifications?limit=10", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 401) return; // User not authenticated, fail silently
+        throw new Error(`Failed to fetch notifications: ${response.status}`);
+      }
       const data = await response.json();
       if (data.success) {
         setNotifications(data.data.data);
@@ -63,21 +113,44 @@ export function NotificationMenu() {
 
   const fetchUnreadCount = async () => {
     try {
-      const response = await fetch("/api/notifications/unread-count");
+      const response = await fetch("/api/notifications/unread-count", {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        if (response.status === 401) return; // User not authenticated, fail silently
+        throw new Error(`Failed to fetch unread count: ${response.status}`);
+      }
       const data = await response.json();
       if (data.success) {
-        setUnreadCount(data.data.count);
+        if (didWarnUnreadFetchFailure) {
+          setDidWarnUnreadFetchFailure(false);
+        }
+        const newCount = data.data.count;
+        if (newCount > unreadCount) {
+          // If count increased, show a subtle toast or refresh list
+          fetchNotifications();
+          toast("Nueva notificación recibida", {
+            icon: <Bell className="h-4 w-4 text-primary" />,
+          });
+        }
+        setUnreadCount(newCount);
       }
     } catch (error) {
-      console.error("Error fetching unread count:", error);
+      if (!didWarnUnreadFetchFailure) {
+        console.warn("Unread notifications endpoint not reachable, polling will retry.", error);
+        setDidWarnUnreadFetchFailure(true);
+      }
     }
   };
+
 
   const markAsRead = async (notificationId: string) => {
     try {
       const response = await fetch(`/api/notifications/${notificationId}/read`, {
         method: "PATCH",
+        credentials: "include",
       });
+      if (!response.ok) return;
       const data = await response.json();
 
       if (data.success) {
@@ -94,7 +167,12 @@ export function NotificationMenu() {
     try {
       const response = await fetch("/api/notifications", {
         method: "POST",
+        credentials: "include",
       });
+      if (!response.ok) {
+        toast.error("Error al marcar notificaciones");
+        return;
+      }
       const data = await response.json();
 
       if (data.success) {
@@ -120,6 +198,8 @@ export function NotificationMenu() {
         return "✅";
       case "STOCK":
         return "📦";
+      case "AVERIA":
+        return "🔧";
       case "WARNING":
         return "⚠️";
       case "ERROR":
@@ -130,6 +210,7 @@ export function NotificationMenu() {
         return "ℹ️";
     }
   };
+
 
   const formatDate = (dateStr: string) => {
     try {

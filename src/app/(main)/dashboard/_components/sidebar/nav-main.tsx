@@ -26,6 +26,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { type NavGroup, type NavMainItem } from "@/navigation/sidebar/sidebar-items";
+import { Icon } from "@/components/ui/icon";
 
 interface NavMainProps {
   readonly items: readonly NavGroup[];
@@ -56,7 +57,7 @@ const NavItemExpanded = ({
               isActive={isActive(item.url, item.subItems)}
               tooltip={item.title}
             >
-              {item.icon && <item.icon />}
+              {item.icon && <Icon name={item.icon} />}
               <span>{item.title}</span>
               {item.comingSoon && <IsComingSoon />}
               <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
@@ -69,7 +70,7 @@ const NavItemExpanded = ({
               tooltip={item.title}
             >
               <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
-                {item.icon && <item.icon />}
+                {item.icon && <Icon name={item.icon} />}
                 <span>{item.title}</span>
                 {item.comingSoon && <IsComingSoon />}
               </Link>
@@ -83,7 +84,7 @@ const NavItemExpanded = ({
                 <SidebarMenuSubItem key={subItem.title}>
                   <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={pathIsMatch(subItem.url)} asChild>
                     <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
-                      {subItem.icon && <subItem.icon />}
+                      {subItem.icon && <Icon name={subItem.icon} />}
                       <span>{subItem.title}</span>
                       {subItem.comingSoon && <IsComingSoon />}
                     </Link>
@@ -120,7 +121,7 @@ const NavItemCollapsed = ({
             tooltip={item.title}
             isActive={isActive(item.url, item.subItems)}
           >
-            {item.icon && <item.icon />}
+            {item.icon && <Icon name={item.icon} />}
             <span>{item.title}</span>
             <ChevronRight />
           </SidebarMenuButton>
@@ -136,7 +137,7 @@ const NavItemCollapsed = ({
                 isActive={pathIsMatch(subItem.url)}
               >
                 <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
-                  {subItem.icon && <subItem.icon className="[&>svg]:text-sidebar-foreground" />}
+                  {subItem.icon && <Icon name={subItem.icon} className="[&>svg]:text-sidebar-foreground" />}
                   <span>{subItem.title}</span>
                   {subItem.comingSoon && <IsComingSoon />}
                 </Link>
@@ -169,6 +170,11 @@ export function NavMain({ items }: NavMainProps) {
     items.flatMap((group) => group.items).find((item) => isSubmenuOpen(item.subItems))?.title || null;
 
   const [openTitle, setOpenTitle] = React.useState<string | null>(initialOpenItem);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Update open item if path changes externally
   React.useEffect(() => {
@@ -189,7 +195,8 @@ export function NavMain({ items }: NavMainProps) {
                 const isActive = isItemActive(item.url, item.subItems);
                 const isOpen = openTitle === item.title;
 
-                if (state === "collapsed" && !isMobile) {
+                // Avoid hydration mismatch by waiting for mount to use client-only state/isMobile logic
+                if (mounted && state === "collapsed" && !isMobile) {
                   // If no subItems, just render the button as a link
                   if (!item.subItems) {
                     return (
@@ -201,7 +208,7 @@ export function NavMain({ items }: NavMainProps) {
                           isActive={isActive}
                         >
                           <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
-                            {item.icon && <item.icon />}
+                            {item.icon && <Icon name={item.icon} />}
                             <span>{item.title}</span>
                           </Link>
                         </SidebarMenuButton>
@@ -211,7 +218,7 @@ export function NavMain({ items }: NavMainProps) {
                   // Otherwise, render the dropdown as before
                   return <NavItemCollapsed key={item.title} item={item} isActive={isItemActive} />;
                 }
-                // Expanded view
+                // Expanded view (matches server render)
                 return (
                   <NavItemExpanded
                     key={item.title}

@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { movimientosContables, categoriasCuentas, usuarios } from "@/lib/db/schema";
-import { eq, and, gte, lte, desc } from "drizzle-orm";
+import { eq, and, gte, lte, desc, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
 export async function GET(req: Request) {
@@ -9,6 +9,12 @@ export async function GET(req: Request) {
     const cajaId = searchParams.get("cajaId");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
+    const traspasoCat = await db
+      .select({ id: categoriasCuentas.id })
+      .from(categoriasCuentas)
+      .where(eq(categoriasCuentas.codigo, "TRASP-001"))
+      .limit(1);
+    const traspasoCatId = traspasoCat[0]?.id ?? null;
 
     if (!cajaId || !from) {
       return NextResponse.json({ success: false, error: "Missing parameters" }, { status: 400 });

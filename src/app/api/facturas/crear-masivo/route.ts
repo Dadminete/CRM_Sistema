@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { sql } from "drizzle-orm";
 
 import { successResponse, errorResponse } from "@/lib/api-response";
+import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 
 interface Suscripcion {
@@ -61,31 +62,54 @@ function generarConcepto(
   suscripcion: Suscripcion,
   mesPeriodo: number,
   anioPeriodo: number,
+  pagoAdelantadoUnMes = false,
 ): string {
   if (suscripcion.servicio_nombre) {
     let concepto = suscripcion.servicio_nombre;
     if (suscripcion.plan_nombre) {
       concepto += ` - Plan ${suscripcion.plan_nombre}`;
     }
-    return `${concepto} (${mesPeriodo}/${anioPeriodo})`;
+    const sufijo = pagoAdelantadoUnMes ? ` - PAGO ADELANTADO (1 MES)` : "";
+    return `${concepto} (${mesPeriodo}/${anioPeriodo})${sufijo}`;
   }
-  return `Servicio - Contrato ${suscripcion.numero_contrato} (${mesPeriodo}/${anioPeriodo})`;
+  const sufijo = pagoAdelantadoUnMes ? ` - PAGO ADELANTADO (1 MES)` : "";
+  return `Servicio - Contrato ${suscripcion.numero_contrato} (${mesPeriodo}/${anioPeriodo})${sufijo}`;
 }
 
 async function crearFactura(
   suscripcion: Suscripcion,
   facturaData: FacturaData,
   itbisPorcentaje: number,
+  descuentoManualMonto = 0,
+  pagoAdelantadoUnMes = false,
 ): Promise<{ numeroFactura: string; total: number }> {
   const numeroFactura = await generarNumeroFactura();
-  const { precioBase, descuentoMonto, subtotal, itbis, total } =
+  const { precioBase, descuentoMonto, subtotal } =
     calcularMontos(suscripcion, itbisPorcentaje);
+
+  if (descuentoManualMonto < 0) {
+    throw new Error("El descuento manual no puede ser negativo");
+  }
+
+  if (descuentoManualMonto > subtotal) {
+    throw new Error("El descuento manual no puede exceder el subtotal de la factura");
+  }
+
+  const subtotalTrasDescuentoManual = subtotal - descuentoManualMonto;
+  const itbis = subtotalTrasDescuentoManual * (itbisPorcentaje / 100);
+  const total = subtotalTrasDescuentoManual + itbis;
+  const descuentoTotal = descuentoMonto + descuentoManualMonto;
 
   const concepto = generarConcepto(
     suscripcion,
     facturaData.mesPeriodo,
     facturaData.anioPeriodo,
+    pagoAdelantadoUnMes,
   );
+  const mesAdelantadoTag = `${String(facturaData.mesPeriodo).padStart(2, "0")}-${facturaData.anioPeriodo}`;
+  const observacionesAdelantado = pagoAdelantadoUnMes
+    ? `PAGO_ADELANTADO | MESES_ADELANTADOS:1 | MES_ADELANTADO:${mesAdelantadoTag}`
+    : null;
 
   // Transacción para asegurar que todas las inserciones se completen o ninguna
   const result = await db.execute(sql`
@@ -93,15 +117,15 @@ async function crearFactura(
       INSERT INTO facturas_clientes (
         numero_factura, cliente_id, tipo_factura, fecha_factura, fecha_vencimiento,
         periodo_facturado_inicio, periodo_facturado_fin, subtotal, descuento,
-        itbis, total, estado, facturada_por, created_at, updated_at
+        itbis, total, estado, observaciones, facturada_por, created_at, updated_at
       ) VALUES (
         ${numeroFactura}, ${suscripcion.cliente_id}, 'servicio',
         ${facturaData.fechaFactura.toISOString()},
         ${facturaData.fechaVencimiento.toISOString()},
         ${facturaData.periodoDe.toISOString()},
         ${facturaData.periodoHasta.toISOString()},
-        ${subtotal}, ${descuentoMonto}, ${itbis}, ${total},
-        'pendiente', ${facturaData.usuarioId}, NOW(), NOW()
+        ${subtotalTrasDescuentoManual}, ${descuentoTotal}, ${itbis}, ${total},
+        'pendiente', ${observacionesAdelantado}, ${facturaData.usuarioId}, NOW(), NOW()
       ) RETURNING id
     ),
     nuevo_detalle AS (
@@ -110,7 +134,7 @@ async function crearFactura(
         descuento, impuesto, total, servicio_id, orden
       )
       SELECT id, ${concepto}, 1, ${precioBase}, ${subtotal},
-        ${descuentoMonto}, ${itbis}, ${total}, ${suscripcion.servicio_id}, 1
+        ${descuentoTotal}, ${itbis}, ${total}, ${suscripcion.servicio_id}, 1
       FROM nueva_factura
       RETURNING factura_id
     )
@@ -137,10 +161,19 @@ async function crearFactura(
  * POST /api/facturas/crear-masivo
  * Crea facturas masivamente desde suscripciones
  */
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async (request: NextRequest, { user }) => {
   try {
     const body = await request.json();
-    const { suscripcionIds, mesPeriodo, anioPeriodo, usuarioId, itbisPorcentaje = 18 } = body;
+    const {
+      suscripcionIds,
+      mesPeriodo,
+      anioPeriodo,
+      itbisPorcentaje = 18,
+      descuentoManualMonto = 0,
+      pagoAdelantadoUnMes = false,
+      mesAdelantado,
+      anioAdelantado,
+    } = body;
 
     if (!suscripcionIds || !Array.isArray(suscripcionIds) || suscripcionIds.length === 0) {
       return errorResponse("Debe seleccionar al menos una suscripción", 400);
@@ -154,18 +187,34 @@ export async function POST(request: NextRequest) {
       return errorResponse("El año es inválido", 400);
     }
 
-    if (!usuarioId) {
-      return errorResponse("El ID de usuario es requerido", 400);
+    if (Boolean(pagoAdelantadoUnMes)) {
+      if (!mesAdelantado || Number(mesAdelantado) < 1 || Number(mesAdelantado) > 12) {
+        return errorResponse("Debe indicar un mes válido para el pago adelantado", 400);
+      }
+      if (!anioAdelantado || Number(anioAdelantado) < 2000) {
+        return errorResponse("Debe indicar un año válido para el pago adelantado", 400);
+      }
     }
 
+    if (Number(descuentoManualMonto || 0) < 0) {
+      return errorResponse("El descuento manual no puede ser negativo", 400);
+    }
+
+    if (Number(descuentoManualMonto || 0) > 0 && Number(descuentoManualMonto || 0) < 1) {
+      return errorResponse("El descuento manual debe ser desde RD$1 en adelante", 400);
+    }
+
+    const mesObjetivo = Boolean(pagoAdelantadoUnMes) ? Number(mesAdelantado) : Number(mesPeriodo);
+    const anioObjetivo = Boolean(pagoAdelantadoUnMes) ? Number(anioAdelantado) : Number(anioPeriodo);
+
     const facturaData: FacturaData = {
-      periodoDe: new Date(anioPeriodo, mesPeriodo - 1, 1),
-      periodoHasta: new Date(anioPeriodo, mesPeriodo, 0),
+      periodoDe: new Date(anioObjetivo, mesObjetivo - 1, 1),
+      periodoHasta: new Date(anioObjetivo, mesObjetivo, 0),
       fechaFactura: new Date(),
-      fechaVencimiento: new Date(anioPeriodo, mesPeriodo - 1, 15),
-      mesPeriodo,
-      anioPeriodo,
-      usuarioId,
+      fechaVencimiento: new Date(anioObjetivo, mesObjetivo - 1, 15),
+      mesPeriodo: mesObjetivo,
+      anioPeriodo: anioObjetivo,
+      usuarioId: user.id,
     };
 
     const suscripciones = await db.execute(sql`
@@ -186,17 +235,60 @@ export async function POST(request: NextRequest) {
       return errorResponse("No se encontraron suscripciones activas válidas", 404);
     }
 
+    const descuentoManualNumerico = Number(descuentoManualMonto || 0);
+    if (descuentoManualNumerico > 0) {
+      const clientesUnicos = new Set(
+        (suscripciones.rows as unknown as Suscripcion[]).map((suscripcion) => suscripcion.cliente_id),
+      );
+
+      if (clientesUnicos.size > 1) {
+        return errorResponse(
+          "El descuento manual solo está permitido cuando selecciona suscripciones de un solo cliente",
+          400,
+        );
+      }
+    }
+
     const facturasCreadas = [];
     const errores = [];
 
-    for (const suscripcion of suscripciones.rows as Suscripcion[]) {
+    const suscripcionesTyped = suscripciones.rows as unknown as Suscripcion[];
+    const subtotalesBase = suscripcionesTyped.map((suscripcion) => {
+      const { subtotal } = calcularMontos(suscripcion, itbisPorcentaje);
+      return Math.max(0, subtotal);
+    });
+    const subtotalesAcumulados = subtotalesBase.reduce((acc, current) => acc + current, 0);
+
+    let descuentoPendienteDistribuir = descuentoManualNumerico;
+
+    for (let index = 0; index < suscripcionesTyped.length; index++) {
+      const suscripcion = suscripcionesTyped[index];
       try {
-        const { numeroFactura, total } = await crearFactura(suscripcion, facturaData, itbisPorcentaje);
+        let descuentoManualFactura = 0;
+        if (descuentoManualNumerico > 0 && subtotalesAcumulados > 0) {
+          if (index === suscripcionesTyped.length - 1) {
+            descuentoManualFactura = Math.max(0, Number(descuentoPendienteDistribuir.toFixed(2)));
+          } else {
+            descuentoManualFactura = Number(
+              ((descuentoManualNumerico * subtotalesBase[index]) / subtotalesAcumulados).toFixed(2),
+            );
+            descuentoPendienteDistribuir = Number((descuentoPendienteDistribuir - descuentoManualFactura).toFixed(2));
+          }
+        }
+
+        const { numeroFactura, total } = await crearFactura(
+          suscripcion,
+          facturaData,
+          itbisPorcentaje,
+          descuentoManualFactura,
+          Boolean(pagoAdelantadoUnMes),
+        );
         facturasCreadas.push({
           numeroFactura,
           clienteNombre: `${suscripcion.cliente_nombre} ${suscripcion.cliente_apellidos}`,
           numeroContrato: suscripcion.numero_contrato,
           total,
+          pagoAdelantadoUnMes: Boolean(pagoAdelantadoUnMes),
         });
       } catch (error: any) {
         console.error(`Error creando factura para ${suscripcion.numero_contrato}:`, error);
@@ -216,4 +308,4 @@ export async function POST(request: NextRequest) {
   } catch (error: any) {
     return errorResponse("Error al crear facturas: " + error.message, 500);
   }
-}
+});

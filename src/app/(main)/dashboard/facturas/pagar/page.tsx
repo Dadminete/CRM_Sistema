@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+
 import {
   Search,
   Receipt,
@@ -15,17 +16,17 @@ import {
   FileText,
   Info,
 } from "lucide-react";
+import { toast } from "sonner";
+
+import { CajaManagementModal } from "@/components/cajas/caja-management-modal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Badge } from "@/components/ui/badge";
-
-const USUARIO_ID = "df4b1335-5ff6-4703-8dcd-3e2f74fb0822"; // Valid user ID from DB
 
 const formatCurrency = (v: string | number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(v));
@@ -39,11 +40,14 @@ export default function PagarFacturaPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeSession, setActiveSession] = useState<any>(null);
+  const [isCajaModalOpen, setIsCajaModalOpen] = useState(false);
+  const [usuarioId, setUsuarioId] = useState<string>("");
 
   // Form state
   const [selectedFacturaId, setSelectedFacturaId] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [monto, setMonto] = useState("");
+  const [descuento, setDescuento] = useState("0");
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [referencia, setReferencia] = useState("");
   const [cajaId, setCajaId] = useState("");
@@ -54,10 +58,18 @@ export default function PagarFacturaPage() {
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
+      // First fetch the profile to get the logged in user ID
+      const profileRes = await fetch("/api/profile");
+      const profileData = await profileRes.json();
+      const currentUserId = profileData?.data?.profile?.id || "";
+      setUsuarioId(currentUserId);
+
       const [resPend, resLookup, resSession] = await Promise.all([
         fetch("/api/facturas/pendientes"),
         fetch("/api/contabilidad/lookup"),
-        fetch(`/api/cajas/sesiones?usuarioId=${USUARIO_ID}`),
+        currentUserId
+          ? fetch(`/api/cajas/sesiones?usuarioId=${currentUserId}`)
+          : Promise.resolve({ json: () => ({ success: false }) } as unknown as Response),
       ]);
 
       const [dataPend, dataLookup, dataSession] = await Promise.all([
@@ -67,12 +79,27 @@ export default function PagarFacturaPage() {
       ]);
 
       if (dataPend.success) setPendientes(dataPend.data);
-      if (dataLookup.success) setLookup(dataLookup.data);
+      let initialCajaId = "";
+
+      if (dataLookup.success) {
+        setLookup(dataLookup.data);
+        // Default to "Caja Principal" if it exists in the boxes list
+        const principal = dataLookup.data.cajas.find((c: any) => c.nombre.toLowerCase().includes("principal"));
+        if (principal) {
+          initialCajaId = principal.id;
+        }
+      }
+
       if (dataSession.success) {
         setActiveSession(dataSession.activeSession);
-        if (dataSession.activeSession) {
-          setCajaId(dataSession.activeSession.cajaId);
+        // Use active session cajaId if no principal was found
+        if (dataSession.activeSession && !initialCajaId) {
+          initialCajaId = dataSession.activeSession.cajaId;
         }
+      }
+
+      if (initialCajaId) {
+        setCajaId(initialCajaId);
       }
     } catch (error) {
       toast.error("Error al cargar datos");
@@ -86,10 +113,20 @@ export default function PagarFacturaPage() {
   }, [fetchData]);
 
   const selectedFactura = pendientes.find((f) => f.id === selectedFacturaId);
+  const balancePendiente = Number(selectedFactura?.montoPendiente ?? 0);
+  const totalFactura = Number(selectedFactura?.total ?? 0);
+  const montoPagadoAdelantado = Math.max(0, totalFactura - balancePendiente);
+  const esPagoAdelantado = selectedFactura?.estado === "adelantado";
+  const montoNumerico = Number(monto || 0);
+  const descuentoNumerico = Number(descuento || 0);
+  const totalAplicado = montoNumerico + descuentoNumerico;
 
   useEffect(() => {
     if (selectedFactura) {
-      setMonto(selectedFactura.montoPendiente);
+      // Always use montoPendiente for partial payments, not total
+      const montoPendienteValue = String(selectedFactura.montoPendiente || 0);
+      setMonto(montoPendienteValue);
+      setDescuento("0");
     }
   }, [selectedFactura]);
 
@@ -111,6 +148,16 @@ export default function PagarFacturaPage() {
       return;
     }
 
+    if (descuentoNumerico < 0) {
+      toast.error("El descuento no puede ser negativo.");
+      return;
+    }
+
+    if (totalAplicado > balancePendiente) {
+      toast.error("El total aplicado (monto + descuento) no puede superar el balance pendiente.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const res = await fetch("/api/facturas/pagar", {
@@ -120,12 +167,12 @@ export default function PagarFacturaPage() {
           facturaId: selectedFacturaId,
           clienteId: selectedFactura.clienteId,
           monto,
+          descuento,
           metodoPago,
           numeroReferencia: referencia,
           cajaId: metodoPago === "efectivo" ? cajaId : null,
           cuentaBancariaId: metodoPago !== "efectivo" ? cuentaBancariaId : null,
           observaciones,
-          usuarioId: USUARIO_ID,
         }),
       });
       const data = await res.json();
@@ -133,6 +180,7 @@ export default function PagarFacturaPage() {
         toast.success("Pago procesado correctamente");
         setSelectedFacturaId("");
         setMonto("");
+        setDescuento("0");
         setReferencia("");
         setObservaciones("");
         fetchData();
@@ -163,14 +211,30 @@ export default function PagarFacturaPage() {
             quedar registrados en una sesión activa.
           </p>
         </div>
-        <Button
-          size="lg"
-          className="gap-2 bg-emerald-600 font-bold tracking-wider text-white uppercase shadow-lg hover:bg-emerald-700"
-          onClick={() => (window.location.href = "/dashboard/cajas-chicas/apertura-cierre")}
-        >
-          <Wallet className="h-5 w-5" />
-          Ir a Apertura de Caja
-        </Button>
+        <div className="flex flex-col gap-3">
+          <Button
+            size="lg"
+            className="gap-2 bg-emerald-600 font-bold tracking-wider text-white uppercase shadow-lg hover:bg-emerald-700"
+            onClick={() => setIsCajaModalOpen(true)}
+          >
+            <Wallet className="h-5 w-5" />
+            Abrir Caja Ahora
+          </Button>
+          <Button
+            variant="ghost"
+            className="text-muted-foreground text-[10px] font-black tracking-widest uppercase"
+            onClick={() => (window.location.href = "/dashboard/cajas-chicas/apertura-cierre")}
+          >
+            Ir a Gestión Avanzada
+          </Button>
+        </div>
+
+        <CajaManagementModal
+          isOpen={isCajaModalOpen}
+          onOpenChange={setIsCajaModalOpen}
+          usuarioId={usuarioId}
+          onSuccess={fetchData}
+        />
       </div>
     );
   }
@@ -191,7 +255,10 @@ export default function PagarFacturaPage() {
             <p className="text-muted-foreground mt-1">Cobro de facturas y abonos a cuentas por cobrar.</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2">
+        <div
+          onClick={() => setIsCajaModalOpen(true)}
+          className="flex cursor-pointer items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 transition-colors hover:bg-emerald-100"
+        >
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           <div className="text-[10px] font-bold tracking-wider text-emerald-700 uppercase">
             Sesión Activa: {activeSession.cajaNombre || "Caja Principal"}
@@ -201,8 +268,8 @@ export default function PagarFacturaPage() {
 
       <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
         {/* Left: Invoice Selection & Search */}
-        <div className="space-y-6 lg:col-span-8">
-          <Card className="border shadow-sm">
+        <div className="space-y-6 lg:col-span-8 lg:flex">
+          <Card className="border shadow-sm lg:flex lg:h-full lg:w-full lg:flex-col">
             <CardHeader className="border-b p-6 pb-4">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2 text-base font-bold">
@@ -213,7 +280,7 @@ export default function PagarFacturaPage() {
                 </Badge>
               </div>
             </CardHeader>
-            <CardContent className="p-6">
+            <CardContent className="p-6 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col">
               <div className="relative mb-6">
                 <Search className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                 <Input
@@ -224,7 +291,7 @@ export default function PagarFacturaPage() {
                 />
               </div>
 
-              <div className="custom-scrollbar grid max-h-[400px] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2">
+              <div className="custom-scrollbar grid max-h-[400px] grid-cols-1 gap-3 overflow-y-auto pr-2 md:grid-cols-2 lg:max-h-none lg:min-h-0 lg:flex-1">
                 {filteredFacturas.map((f) => (
                   <div
                     key={f.id}
@@ -245,12 +312,28 @@ export default function PagarFacturaPage() {
                           {f.clienteNombre} {f.clienteApellidos}
                         </div>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className="h-4 border-slate-200 px-2 py-0 text-[9px] font-black uppercase"
-                      >
-                        {f.estado}
-                      </Badge>
+                      <div>
+                        {f.estado === "pendiente" ? (
+                          <Badge className="h-4 bg-green-600 px-2 py-0 text-[9px] font-black text-white uppercase">
+                            {f.estado}
+                          </Badge>
+                        ) : f.estado === "adelantado" ? (
+                          <Badge className="h-4 bg-blue-600 px-2 py-0 text-[9px] font-black text-white uppercase">
+                            {f.estado}
+                          </Badge>
+                        ) : f.estado === "parcial" || f.estado === "pago parcial" ? (
+                          <Badge className="h-4 bg-orange-500 px-2 py-0 text-[9px] font-black text-white uppercase">
+                            {f.estado}
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="h-4 border-slate-200 px-2 py-0 text-[9px] font-black uppercase"
+                          >
+                            {f.estado}
+                          </Badge>
+                        )}
+                      </div>
                     </div>
                     <div className="mt-1 flex items-end justify-between">
                       <div className="text-muted-foreground flex items-center gap-1 text-[9px] font-medium uppercase">
@@ -263,6 +346,81 @@ export default function PagarFacturaPage() {
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* Right: Summary */}
+        <div className="space-y-6 lg:col-span-4">
+          <Card className="overflow-hidden border shadow-md">
+            <CardHeader className="bg-slate-900 px-5 py-4 text-white">
+              <CardTitle className="flex items-center gap-2 text-xs font-black tracking-widest uppercase">
+                <Info className="h-3.5 w-3.5" /> Confirmación
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6 bg-slate-50 p-6">
+              {selectedFactura ? (
+                <>
+                  <div className="flex flex-col items-center gap-4 border-b border-slate-200 pb-6">
+                    <div className="relative h-24 w-24 overflow-hidden rounded-full border-4 border-white bg-slate-200 shadow-xl">
+                      {selectedFactura.fotoUrl ? (
+                        <img src={selectedFactura.fotoUrl} alt="Cliente" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="flex h-full w-full items-center justify-center bg-slate-100">
+                          <User className="h-10 w-10 text-slate-400" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-center">
+                      <h3 className="text-lg leading-tight font-black text-slate-900">
+                        {selectedFactura.clienteNombre} {selectedFactura.clienteApellidos}
+                      </h3>
+                      <p className="text-primary mt-0.5 text-[10px] font-bold tracking-widest uppercase">
+                        {selectedFactura.numeroFactura}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Total factura:</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(selectedFactura.total)}</span>
+                    </div>
+                    {esPagoAdelantado && (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">Pagado por adelantado:</span>
+                        <span className="font-bold text-blue-700">{formatCurrency(montoPagadoAdelantado)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Resta del total:</span>
+                      <span className="font-bold text-slate-900">{formatCurrency(selectedFactura.montoPendiente)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Descuento:</span>
+                      <span className="font-bold text-emerald-700">-{formatCurrency(descuento || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">Saldo luego del pago:</span>
+                      <span className="font-bold text-slate-900">
+                        {formatCurrency(Math.max(0, balancePendiente - totalAplicado))}
+                      </span>
+                    </div>
+                    <hr className="border-slate-100" />
+                    <div className="flex items-center justify-between py-2">
+                      <span className="text-xs font-black tracking-tighter text-slate-800 uppercase">
+                        Total a Recibir:
+                      </span>
+                      <span className="text-primary text-xl font-black">{formatCurrency(monto || 0)}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3 py-10 text-center opacity-40">
+                  <Receipt className="mx-auto h-8 w-8 text-slate-400" />
+                  <p className="text-[10px] font-black text-slate-500 uppercase">Seleccione una Factura</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
 
           {selectedFactura && (
             <Card className="animate-in slide-in-from-bottom-2 border border-slate-200 shadow-sm duration-300">
@@ -272,7 +430,7 @@ export default function PagarFacturaPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6 p-6">
-                <div className="grid gap-6 md:grid-cols-2">
+                <div className="grid gap-6 md:grid-cols-1">
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <Label className="text-muted-foreground text-[10px] font-black tracking-wider uppercase">
@@ -282,9 +440,42 @@ export default function PagarFacturaPage() {
                         <DollarSign className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
                         <Input
                           type="number"
+                          min="0"
+                          step="0.01"
                           className="h-12 pl-8 text-xl font-bold"
                           value={monto}
                           onChange={(e) => setMonto(e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-muted-foreground text-[10px] font-black tracking-wider uppercase">
+                        Descuento al Cliente (RD$)
+                      </Label>
+                      <div className="relative">
+                        <DollarSign className="text-muted-foreground absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2" />
+                        <Input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          className="h-10 pl-8"
+                          value={descuento}
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            setDescuento(value);
+
+                            // Always reference montoPendiente for discount calculations, never total
+                            const descuentoValue = Number(value || 0);
+                            const montoActual = Number(monto || 0);
+                            const pendienteActual = Number(selectedFactura?.montoPendiente || 0);
+                            const nuevoMontoSugerido = Math.max(0, pendienteActual - descuentoValue);
+
+                            // Auto-adjust monto if it equals original pending amount or exceeds new suggested amount
+                            if (montoActual > nuevoMontoSugerido || montoActual === pendienteActual) {
+                              setMonto(String(nuevoMontoSugerido));
+                            }
+                          }}
                         />
                       </div>
                     </div>
@@ -312,11 +503,18 @@ export default function PagarFacturaPage() {
                         {metodoPago === "efectivo" ? "Caja Responsable" : "Cuenta de Depósito"}
                       </Label>
                       {metodoPago === "efectivo" ? (
-                        <Input
-                          disabled
-                          value={activeSession?.cajaNombre || "Caja Principal"}
-                          className="h-10 bg-slate-50 text-xs font-bold"
-                        />
+                        <Select value={cajaId} onValueChange={setCajaId}>
+                          <SelectTrigger className="h-10">
+                            <SelectValue placeholder="Seleccionar caja..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {lookup.cajas.map((c: any) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.nombre}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       ) : (
                         <Select value={cuentaBancariaId} onValueChange={setCuentaBancariaId}>
                           <SelectTrigger className="h-10">
@@ -358,71 +556,35 @@ export default function PagarFacturaPage() {
                     onChange={(e) => setObservaciones(e.target.value)}
                   />
                 </div>
+
+                <Button
+                  onClick={handleProcessPayment}
+                  disabled={isSubmitting || Number(monto || 0) <= 0}
+                  className="h-11 w-full text-xs font-black tracking-wider uppercase shadow-md"
+                >
+                  {isSubmitting ? "Procesando..." : "Confirmar Recibo"}
+                </Button>
               </CardContent>
             </Card>
           )}
         </div>
-
-        {/* Right: Summary */}
-        <div className="space-y-6 lg:col-span-4">
-          <Card className="overflow-hidden border shadow-md">
-            <CardHeader className="bg-slate-900 px-5 py-4 text-white">
-              <CardTitle className="flex items-center gap-2 text-xs font-black tracking-widest uppercase">
-                <Info className="h-3.5 w-3.5" /> Confirmación
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6 p-6">
-              {selectedFactura ? (
-                <>
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Cliente:</span>
-                      <span className="ml-2 max-w-[150px] truncate font-bold text-slate-700">
-                        {selectedFactura.clienteNombre} {selectedFactura.clienteApellidos}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-muted-foreground">Subtotal:</span>
-                      <span className="font-medium text-slate-700">
-                        {formatCurrency(selectedFactura.montoPendiente)}
-                      </span>
-                    </div>
-                    <hr className="border-slate-100" />
-                    <div className="flex items-center justify-between py-2">
-                      <span className="text-xs font-black tracking-tighter text-slate-800 uppercase">
-                        Total a Recibir:
-                      </span>
-                      <span className="text-primary text-xl font-black">{formatCurrency(monto || 0)}</span>
-                    </div>
-                  </div>
-
-                  <Button
-                    onClick={handleProcessPayment}
-                    disabled={isSubmitting || Number(monto || 0) <= 0}
-                    className="h-11 w-full text-xs font-black tracking-wider uppercase shadow-md"
-                  >
-                    {isSubmitting ? "Procesando..." : "Confirmar Recibo"}
-                  </Button>
-                </>
-              ) : (
-                <div className="space-y-3 py-10 text-center opacity-40">
-                  <Receipt className="mx-auto h-8 w-8 text-slate-400" />
-                  <p className="text-[10px] font-black text-slate-500 uppercase">Seleccione una Factura</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <div className="space-y-2 rounded-lg border border-amber-100 bg-amber-50 p-4">
-            <div className="flex items-center gap-2 text-[10px] font-black tracking-wider text-amber-700 uppercase">
-              <ShieldCheck className="h-3.5 w-3.5" /> Auditoría
-            </div>
-            <p className="text-[9px] leading-relaxed font-medium text-amber-700">
-              Toda transacción es registrada con sello de tiempo y vinculada al usuario y sesión de caja activa.
-            </p>
-          </div>
-        </div>
       </div>
+
+      <div className="space-y-2 rounded-lg border border-amber-100 bg-amber-50 p-4">
+        <div className="flex items-center gap-2 text-[10px] font-black tracking-wider text-amber-700 uppercase">
+          <ShieldCheck className="h-3.5 w-3.5" /> Auditoría
+        </div>
+        <p className="text-[9px] leading-relaxed font-medium text-amber-700">
+          Toda transacción es registrada con sello de tiempo y vinculada al usuario y sesión de caja activa.
+        </p>
+      </div>
+
+      <CajaManagementModal
+        isOpen={isCajaModalOpen}
+        onOpenChange={setIsCajaModalOpen}
+        usuarioId={usuarioId}
+        onSuccess={fetchData}
+      />
     </div>
   );
 }

@@ -9,7 +9,7 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-popover', '@radix-ui/react-select', '@radix-ui/react-tabs', 'recharts', 'date-fns'],
     // Mejoras de rendimiento para compilación
-    optimizeCss: true,
+    // optimizeCss: true,
     optimizeServerReact: true,
   },
   
@@ -24,10 +24,10 @@ const nextConfig = {
   },
   allowedDevOrigins: [
     "http://localhost:3000",
-    "http://172.16.0.23:3000",
-    "http://172.16.0.23",
+    "http://172.16.0.25:3000",
+    "http://172.16.0.25",
     "localhost",
-    "172.16.0.23",
+    "172.16.0.25",
   ],
   async redirects() {
     return [

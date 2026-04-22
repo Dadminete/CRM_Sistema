@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sesionesCaja, cajas, usuarios, movimientosContables } from "@/lib/db/schema";
-import { eq, and, sql, desc, gte, lte, or, nvl } from "drizzle-orm";
+import { sesionesCaja, cajas, usuarios, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
+import { eq, and, sql, desc, gte, lte, or, nvl, ne } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -9,6 +9,12 @@ export async function GET(req: Request) {
     const cajaId = searchParams.get("cajaId");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    const traspasoCat = await db
+      .select({ id: categoriasCuentas.id })
+      .from(categoriasCuentas)
+      .where(eq(categoriasCuentas.codigo, "TRASP-001"))
+      .limit(1);
+    const traspasoCatId = traspasoCat[0]?.id ?? null;
 
     const limit = parseInt(searchParams.get("limit") || "20");
     const offset = parseInt(searchParams.get("offset") || "0");
@@ -61,15 +67,16 @@ export async function GET(req: Request) {
           baseFilters.push(lte(movimientosContables.fecha, rangeEnd));
         }
 
+        const { inArray } = require('drizzle-orm');
         const [ingresos, gastos] = await Promise.all([
           db
             .select({ total: sql<string>`COALESCE(SUM(monto), 0)` })
             .from(movimientosContables)
-            .where(and(...baseFilters, eq(movimientosContables.tipo, "ingreso"))),
+            .where(and(...baseFilters, inArray(movimientosContables.tipo, ['ingreso', 'traspaso']))),
           db
             .select({ total: sql<string>`COALESCE(SUM(monto), 0)` })
             .from(movimientosContables)
-            .where(and(...baseFilters, eq(movimientosContables.tipo, "gasto"))),
+            .where(and(...baseFilters, inArray(movimientosContables.tipo, ['gasto', 'egreso']))),
         ]);
 
         // Note: the above query is inefficient inside a map, let's optimize it.

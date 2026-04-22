@@ -1,68 +1,13 @@
-import {
-  ShoppingBag,
-  Forklift,
-  Mail,
-  MessageSquare,
-  Calendar,
-  Kanban,
-  ReceiptText,
-  Users,
-  Lock,
-  Fingerprint,
-  SquareArrowUpRight,
-  LayoutDashboard,
-  ChartBar,
-  Banknote,
-  Gauge,
-  GraduationCap,
-  Wrench,
-  Plus,
-  List,
-  CheckCircle,
-  Landmark,
-  Wallet,
-  DoorOpen,
-  UserPlus,
-  Settings,
-  UserX,
-  CreditCard,
-  Calculator,
-  FolderTree,
-  BookOpen,
-  Receipt,
-  TrendingUp,
-  CalendarCheck,
-  ArrowLeftRight,
-  FileText,
-  FilePlus,
-  FileX,
-  Clock,
-  FileCheck,
-  Split,
-  ClipboardList,
-  ArrowUpCircle,
-  ArrowDownCircle,
-  Store,
-  ShoppingCart,
-  Package,
-  ClipboardCheck,
-  Database,
-  Shield,
-  Briefcase,
-  UserCheck,
-  DollarSign,
-  HandCoins,
-  TrendingUpDown,
-  ServerCog,
-  Layers,
-  TrendingDown,
-  type LucideIcon,
-} from "lucide-react";
+import { asc, eq } from "drizzle-orm";
+
+import { db } from "@/lib/db";
+import { banks, cuentasBancarias } from "@/lib/db/schema";
+import { toBankPathSegment } from "@/lib/utils";
 
 export interface NavSubItem {
   title: string;
   url: string;
-  icon?: LucideIcon;
+  icon?: string;
   comingSoon?: boolean;
   newTab?: boolean;
   isNew?: boolean;
@@ -71,7 +16,7 @@ export interface NavSubItem {
 export interface NavMainItem {
   title: string;
   url: string;
-  icon?: LucideIcon;
+  icon?: string;
   subItems?: NavSubItem[];
   comingSoon?: boolean;
   newTab?: boolean;
@@ -84,7 +29,7 @@ export interface NavGroup {
   items: NavMainItem[];
 }
 
-export const sidebarItems: NavGroup[] = [
+export const sidebarItemsBase: NavGroup[] = [
   {
     id: 1,
     label: "Menu Principal",
@@ -92,273 +37,273 @@ export const sidebarItems: NavGroup[] = [
       {
         title: "Dashboard",
         url: "/dashboard/crm",
-        icon: LayoutDashboard,
+        icon: "LayoutDashboard",
       },
       {
         title: "Averias",
         url: "/dashboard/averias",
-        icon: Wrench,
+        icon: "Wrench",
         subItems: [
           {
             title: "Crear Averia",
             url: "/dashboard/averias/crear",
-            icon: Plus,
+            icon: "Plus",
           },
           {
             title: "Listado Averias",
             url: "/dashboard/averias/listado",
-            icon: List,
+            icon: "List",
           },
           {
             title: "Cerrar Averias",
             url: "/dashboard/averias/cerrar",
-            icon: CheckCircle,
+            icon: "CheckCircle",
           },
         ],
       },
       {
         title: "Banco",
         url: "/dashboard/banco",
-        icon: Landmark,
+        icon: "Landmark",
         subItems: [
           {
-            title: "Finance",
-            url: "/dashboard/finance",
-            icon: Banknote,
+            title: "Dashboard Bancos",
+            url: "/dashboard/banco/dashboard",
+            icon: "LayoutDashboard",
           },
           {
             title: "Gestion de Banco",
             url: "/dashboard/banco/gestion",
-            icon: Landmark,
-          },
-          {
-            title: "Banfondesa",
-            url: "/dashboard/banco/banfondesa",
-            icon: Landmark,
+            icon: "Landmark",
           },
         ],
       },
       {
         title: "Cajas Chicas",
         url: "/dashboard/cajas-chicas",
-        icon: Wallet,
+        icon: "Wallet",
         subItems: [
           {
             title: "Dashboard Cajas",
             url: "/dashboard/cajas-chicas/dashboard",
-            icon: LayoutDashboard,
+            icon: "LayoutDashboard",
           },
           {
             title: "Apertura & Cierre",
             url: "/dashboard/cajas-chicas/apertura-cierre",
-            icon: DoorOpen,
+            icon: "DoorOpen",
           },
           {
             title: "Listado Cajas",
             url: "/dashboard/cajas-chicas/listado",
-            icon: List,
+            icon: "List",
           },
           {
             title: "Resolución Discrepancias",
             url: "/dashboard/cajas-chicas/discrepancias",
-            icon: FileCheck,
+            icon: "FileCheck",
+          },
+          {
+            title: "Reporte de Ingresos",
+            url: "/dashboard/listados/ingresos",
+            icon: "TrendingUp",
+          },
+          {
+            title: "Reporte de Gastos",
+            url: "/dashboard/listados/gastos",
+            icon: "TrendingDown",
           },
         ],
       },
       {
         title: "Clientes",
         url: "/dashboard/clientes",
-        icon: Users,
+        icon: "Users",
         subItems: [
           {
             title: "Dashboard Clientes",
             url: "/dashboard/clientes/dashboard",
-            icon: LayoutDashboard,
+            icon: "LayoutDashboard",
           },
           {
             title: "Crear Clientes",
             url: "/dashboard/clientes/crear",
-            icon: UserPlus,
+            icon: "UserPlus",
           },
           {
             title: "Equipos & Servicios",
             url: "/dashboard/clientes/equipos-servicios",
-            icon: Settings,
+            icon: "Settings",
           },
           {
             title: "Listado Clientes",
             url: "/dashboard/clientes/listado",
-            icon: List,
-          },
-          {
-            title: "Reporte de Ingresos",
-            url: "/dashboard/listados/ingresos",
-            icon: TrendingUp,
-          },
-          {
-            title: "Reporte de Gastos",
-            url: "/dashboard/listados/gastos",
-            icon: TrendingDown,
+            icon: "List",
           },
           {
             title: "Listado Inactivos",
             url: "/dashboard/clientes/inactivos",
-            icon: UserX,
+            icon: "UserX",
           },
           {
             title: "Suscripciones",
             url: "/dashboard/clientes/suscripciones",
-            icon: CreditCard,
+            icon: "CreditCard",
           },
         ],
       },
       {
         title: "Contabilidad",
         url: "/dashboard/contabilidad",
-        icon: Calculator,
+        icon: "Calculator",
         subItems: [
           {
             title: "Dashboard Contabilidad",
             url: "/dashboard/contabilidad/dashboard",
-            icon: LayoutDashboard,
+            icon: "LayoutDashboard",
           },
           {
             title: "Categorias Cuentas",
             url: "/dashboard/contabilidad/categorias-cuentas",
-            icon: FolderTree,
+            icon: "FolderTree",
           },
           {
             title: "Cuentas Contables",
             url: "/dashboard/contabilidad/cuentas-contables",
-            icon: BookOpen,
+            icon: "BookOpen",
           },
           {
             title: "Cuentas por Cobrar",
             url: "/dashboard/contabilidad/cuentas-por-cobrar",
-            icon: Receipt,
+            icon: "Receipt",
           },
           {
             title: "Ingresos & Gastos",
             url: "/dashboard/contabilidad/ingresos-gastos",
-            icon: TrendingUp,
+            icon: "TrendingUp",
           },
           {
             title: "Pagos X Mes",
             url: "/dashboard/contabilidad/pagos-mes",
-            icon: CalendarCheck,
+            icon: "CalendarCheck",
           },
           {
             title: "Traspasos",
             url: "/dashboard/contabilidad/traspasos",
-            icon: ArrowLeftRight,
+            icon: "ArrowLeftRight",
+          },
+          {
+            title: "Listado de Ingresos",
+            url: "/dashboard/listados/ingresos",
+            icon: "ArrowUpCircle",
           },
         ],
       },
       {
         title: "Facturas",
         url: "/dashboard/facturas",
-        icon: FileText,
+        icon: "FileText",
         subItems: [
           {
             title: "Dashboard Facturas",
             url: "/dashboard/facturas/dashboard",
-            icon: LayoutDashboard,
+            icon: "LayoutDashboard",
           },
           {
             title: "Crear Facturas",
             url: "/dashboard/facturas/crear",
-            icon: FilePlus,
+            icon: "FilePlus",
           },
           {
             title: "Pagar Facturas",
             url: "/dashboard/facturas/pagar",
-            icon: CreditCard,
+            icon: "CreditCard",
           },
           {
             title: "Facturas Anuladas",
             url: "/dashboard/facturas/anuladas",
-            icon: FileX,
+            icon: "FileX",
           },
           {
             title: "Facturas Pendientes",
             url: "/dashboard/facturas/pendientes",
-            icon: Clock,
+            icon: "Clock",
           },
           {
             title: "Facturas Pagas",
             url: "/dashboard/facturas/pagas",
-            icon: FileCheck,
+            icon: "FileCheck",
           },
           {
             title: "Pagos Parciales",
             url: "/dashboard/facturas/pagos-parciales",
-            icon: Split,
+            icon: "Split",
           },
           {
             title: "Pagos x Mes",
             url: "/dashboard/facturas/pagos-mes",
-            icon: CalendarCheck,
+            icon: "CalendarCheck",
           },
         ],
       },
       {
         title: "Listados",
         url: "/dashboard/listados",
-        icon: ClipboardList,
+        icon: "ClipboardList",
         subItems: [
           {
             title: "Lista Ingresos",
             url: "/dashboard/listados/ingresos",
-            icon: ArrowUpCircle,
+            icon: "ArrowUpCircle",
           },
           {
             title: "Lista Gastos",
             url: "/dashboard/listados/gastos",
-            icon: ArrowDownCircle,
+            icon: "ArrowDownCircle",
           },
         ],
       },
       {
         title: "Papeleria",
         url: "/dashboard/papeleria",
-        icon: ShoppingCart,
+        icon: "ShoppingCart",
         subItems: [
           {
             title: "Dashboard Papeleria",
             url: "/dashboard/papeleria/dashboard",
-            icon: LayoutDashboard,
+            icon: "LayoutDashboard",
           },
           {
             title: "Ventas",
             url: "/dashboard/papeleria/ventas",
-            icon: ShoppingCart,
+            icon: "ShoppingCart",
           },
           {
             title: "Categorias",
             url: "/dashboard/papeleria/categorias",
-            icon: FolderTree,
+            icon: "FolderTree",
           },
           {
             title: "Productos",
             url: "/dashboard/papeleria/productos",
-            icon: Package,
+            icon: "Package",
           },
           {
             title: "Listado Papeleria",
             url: "/dashboard/papeleria/listado-papeleria",
-            icon: List,
+            icon: "List",
           },
           {
             title: "Listado de Ventas",
             url: "/dashboard/papeleria/listado-ventas",
-            icon: ClipboardCheck,
+            icon: "ClipboardCheck",
           },
         ],
       },
       {
         title: "Default",
         url: "/dashboard/default",
-        icon: LayoutDashboard,
+        icon: "LayoutDashboard",
       },
     ],
   },
@@ -369,86 +314,86 @@ export const sidebarItems: NavGroup[] = [
       {
         title: "Base De Datos",
         url: "/dashboard/database",
-        icon: Database,
+        icon: "Database",
       },
       {
         title: "Chat",
         url: "/chat",
-        icon: MessageSquare,
+        icon: "MessageSquare",
       },
       {
         title: "Calendar",
         url: "/calendar",
-        icon: Calendar,
+        icon: "Calendar",
       },
       {
         title: "Permisos",
         url: "/dashboard/permissions",
-        icon: Shield,
+        icon: "Shield",
       },
       {
         title: "Servicios",
         url: "/servicios",
-        icon: ServerCog,
+        icon: "ServerCog",
         subItems: [
           {
             title: "Categorias",
             url: "/servicios/categorias",
-            icon: FolderTree,
+            icon: "FolderTree",
           },
           {
             title: "Servicios",
             url: "/servicios/listado",
-            icon: Settings,
+            icon: "Settings",
           },
           {
             title: "Planes",
-            url: "/servicios/planes",
-            icon: Layers,
+            url: "/dashboard/servicios/planes",
+            icon: "Layers",
           },
         ],
       },
       {
         title: "RR.HH.",
         url: "/rrhh",
-        icon: Briefcase,
+        icon: "Briefcase",
         subItems: [
           {
             title: "Empleados",
             url: "/rrhh/empleados",
-            icon: UserCheck,
+            icon: "UserCheck",
           },
           {
             title: "Nómina",
             url: "/rrhh/nomina",
-            icon: DollarSign,
+            icon: "DollarSign",
           },
           {
             title: "Préstamos",
             url: "/rrhh/prestamos",
-            icon: HandCoins,
+            icon: "HandCoins",
           },
           {
             title: "Comisiones",
             url: "/rrhh/comisiones",
-            icon: TrendingUpDown,
+            icon: "TrendingUpDown",
           },
         ],
       },
       {
         title: "Roles",
         url: "/dashboard/roles",
-        icon: Lock,
+        icon: "Lock",
       },
       {
         title: "Usuarios",
         url: "/dashboard/users",
-        icon: Users,
+        icon: "Users",
       },
       {
         title: "Authentication",
         url: "/auth",
-        icon: Fingerprint,
+        icon: "Fingerprint",
         subItems: [
           { title: "Login v1", url: "/auth/v1/login", newTab: true },
           { title: "Login v2", url: "/auth/v2/login", newTab: true },
@@ -458,4 +403,86 @@ export const sidebarItems: NavGroup[] = [
       },
     ],
   },
+  {
+    id: 3,
+    label: "Capacitación",
+    items: [
+      {
+        title: "ISP Academy",
+        url: "/dashboard/capacitacion",
+        icon: "GraduationCap",
+        isNew: true,
+        subItems: [
+          {
+            title: "Fundamentos de Redes",
+            url: "/dashboard/capacitacion/fundamentos-redes",
+            icon: "Network",
+          },
+          {
+            title: "Redes Inalámbricas",
+            url: "/dashboard/capacitacion/redes-inalambricas",
+            icon: "Wifi",
+          },
+          {
+            title: "Equipos MikroTik",
+            url: "/dashboard/capacitacion/equipos-mikrotik",
+            icon: "Router",
+          },
+          {
+            title: "Operaciones Básicas",
+            url: "/dashboard/capacitacion/operaciones-basicas",
+            icon: "Terminal",
+          },
+        ],
+      },
+    ],
+  },
 ];
+
+// Utility moved to @/lib/utils
+
+export async function getSidebarItems(): Promise<NavGroup[]> {
+  const bancosConCuentas = await db.query.banks.findMany({
+    where: eq(banks.activo, true),
+    with: {
+      cuentasBancarias: {
+        where: eq(cuentasBancarias.activo, true),
+      },
+    },
+    orderBy: [asc(banks.nombre)],
+  });
+
+  return sidebarItemsBase.map((group) => ({
+    ...group,
+    items: group.items.map((item) => {
+      if (item.title !== "Banco") {
+        return item;
+      }
+
+      const staticSubItems = item.subItems ?? [];
+      const existingUrls = new Set(staticSubItems.map((subItem) => subItem.url));
+
+      // Generar sub-items dinámicos para bancos y sus cuentas
+      const dynamicBankSubItems: NavSubItem[] = [];
+
+      bancosConCuentas.forEach((bank) => {
+        // Añadir el banco si no existe
+        const bankUrl = `/dashboard/banco/${toBankPathSegment(bank.nombre)}`;
+        if (!existingUrls.has(bankUrl)) {
+          dynamicBankSubItems.push({
+            title: bank.nombre,
+            url: bankUrl,
+            icon: "Landmark",
+          });
+        }
+      });
+
+      return {
+        ...item,
+        subItems: [...staticSubItems, ...dynamicBankSubItems],
+      };
+    }),
+  }));
+}
+
+export const sidebarItems = sidebarItemsBase;

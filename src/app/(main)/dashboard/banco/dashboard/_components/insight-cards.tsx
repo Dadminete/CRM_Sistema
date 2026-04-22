@@ -1,0 +1,113 @@
+"use client";
+
+import { XAxis, Label, Pie, PieChart, Bar, BarChart, CartesianGrid, LabelList, YAxis } from "recharts";
+
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend } from "@/components/ui/chart";
+
+interface InsightCardsProps {
+  distribution: any[];
+}
+
+export function InsightCards({ distribution }: InsightCardsProps) {
+  const chartData = Array.isArray(distribution)
+    ? distribution.map((d, i) => ({
+      source: d.source,
+      value: parseFloat(d.value || 0),
+      fill: `var(--chart-${(i % 5) + 1})`,
+    }))
+    : [];
+
+  const totalValue = chartData.reduce((acc, curr) => acc + curr.value, 0);
+
+  return (
+    <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-5">
+      <Card className="col-span-1 xl:col-span-2">
+        <CardHeader>
+          <CardTitle>Total por Banco</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[260px] pb-0">
+          <ChartContainer config={{}} className="mx-auto aspect-auto h-[230px] w-full">
+            <PieChart margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
+              <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
+              <Pie
+                data={chartData}
+                dataKey="value"
+                nameKey="source"
+                innerRadius={60}
+                outerRadius={85}
+                paddingAngle={2}
+                cornerRadius={4}
+              >
+                <Label
+                  content={({ viewBox }) => {
+                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
+                      return (
+                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
+                          <tspan
+                            x={viewBox.cx}
+                            y={viewBox.cy}
+                            className="fill-foreground text-lg font-bold tabular-nums"
+                          >
+                            {totalValue > 1000 ? `$${(totalValue / 1000).toFixed(1)}k` : `$${totalValue}`}
+                          </tspan>
+                          <tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + 20} className="fill-muted-foreground text-[10px]">
+                            Total
+                        </tspan>
+                        </text>
+                      );
+                    }
+                  }}
+                />
+              </Pie>
+              <ChartLegend
+                layout="vertical"
+                verticalAlign="middle"
+                align="right"
+                content={() => (
+                  <ul className="flex flex-col gap-2 overflow-y-auto max-h-[180px] pr-1">
+                    {chartData.map((item) => (
+                      <li key={item.source} className="flex w-32 sm:w-36 items-center justify-between text-[11px] sm:text-xs">
+                        <span className="flex items-center gap-1.5 overflow-hidden">
+                          <span className="size-2 shrink-0 rounded-full" style={{ background: item.fill }} />
+                          <span className="truncate max-w-[80px] sm:max-w-[100px]">{item.source}</span>
+                        </span>
+                        <span className="font-medium tabular-nums pl-1">${(item.value / 1000).toFixed(1)}k</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              />
+            </PieChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      <Card className="col-span-1 xl:col-span-3">
+        <CardHeader>
+          <CardTitle>Distribución de Fondos</CardTitle>
+        </CardHeader>
+        <CardContent className="h-[260px] pb-4">
+          <ChartContainer config={{}} className="h-full w-full">
+            <BarChart accessibilityLayer data={chartData} layout="vertical" margin={{ left: 60, right: 10 }}>
+              <CartesianGrid horizontal={false} />
+              <YAxis dataKey="source" type="category" tickLine={false} axisLine={false} hide />
+              <XAxis dataKey="value" type="number" hide />
+              <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
+              <Bar dataKey="value" layout="vertical" fill="var(--chart-1)" radius={[0, 6, 6, 0]} minPointSize={100}>
+                <LabelList
+                  dataKey="value"
+                  position="left"
+                  offset={10}
+                  className="fill-foreground text-[10px] tabular-nums font-bold"
+                  formatter={(v: any) => `$${v.toLocaleString()}`}
+                />
+                <LabelList dataKey="source" position="insideRight" offset={8} className="fill-white text-[10px]" />
+              </Bar>
+            </BarChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

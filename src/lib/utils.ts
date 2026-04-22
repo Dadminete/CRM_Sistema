@@ -29,7 +29,13 @@ export function formatCurrency(
     noDecimals?: boolean;
   },
 ) {
-  const { currency = "USD", locale = "en-US", minimumFractionDigits, maximumFractionDigits, noDecimals } = opts ?? {};
+  const { 
+    currency = "DOP", 
+    locale = "es-DO", 
+    minimumFractionDigits = 0, 
+    maximumFractionDigits = 0, 
+    noDecimals = false 
+  } = opts ?? {};
 
   const formatOptions: Intl.NumberFormatOptions = {
     style: "currency",
@@ -40,3 +46,13 @@ export function formatCurrency(
 
   return new Intl.NumberFormat(locale, formatOptions).format(amount);
 }
+
+
+export const toBankPathSegment = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "banco";

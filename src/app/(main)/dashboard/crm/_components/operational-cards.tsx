@@ -1,18 +1,74 @@
 "use client";
 
-import { Clock } from "lucide-react";
+import { useEffect, useState } from "react";
+
+import Link from "next/link";
+
+import { Clock, UserPlus, AlertTriangle, ShieldAlert } from "lucide-react";
 import { FunnelChart, Funnel, LabelList } from "recharts";
 
-import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { ChartContainer } from "@/components/ui/chart";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Progress } from "@/components/ui/progress";
-import { formatCurrency, cn } from "@/lib/utils";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { formatCurrency } from "@/lib/utils";
 
-import { salesPipelineChartData, salesPipelineChartConfig, regionSalesData, actionItems } from "./crm.config";
+import { salesPipelineChartData, salesPipelineChartConfig } from "./crm.config";
+
+type RecentClient = {
+  id: string;
+  nombre: string;
+  apellidos: string;
+  fechaIngreso: string;
+  estado: string;
+  codigoCliente: string;
+  fotoUrl: string | null;
+};
+
+type SystemAlert = {
+  id: string;
+  accion: string;
+  resultado: string;
+  mensajeError: string;
+  fechaHora: string;
+  tabla: string;
+};
 
 export function OperationalCards() {
-  const totalSales = regionSalesData.reduce((sum, region) => sum + region.sales, 0);
+  const [recentClients, setRecentClients] = useState<RecentClient[]>([]);
+  const [systemAlerts, setSystemAlerts] = useState<SystemAlert[]>([]);
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [loadingAlerts, setLoadingAlerts] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/crm/recent-clients")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setRecentClients(json.data);
+      })
+      .finally(() => setLoadingClients(false));
+
+    fetch("/api/crm/system-alerts")
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.success) setSystemAlerts(json.data);
+      })
+      .finally(() => setLoadingAlerts(false));
+  }, []);
+
+  const formatFecha = (dateStr: string) => {
+    try {
+      return new Date(dateStr).toLocaleDateString("es-DO", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
   return (
     <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-3">
       <Card>
@@ -35,79 +91,98 @@ export function OperationalCards() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Sales by Region</CardTitle>
-          <CardDescription className="font-medium tabular-nums">
-            {formatCurrency(totalSales, { noDecimals: true })}
-          </CardDescription>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold">Últimos Clientes Registrados</CardTitle>
+            <UserPlus className="text-muted-foreground h-4 w-4" />
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-2.5">
-            {regionSalesData.map((region) => (
-              <div key={region.region} className="space-y-0.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{region.region}</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-sm font-semibold tabular-nums">
-                      {formatCurrency(region.sales, { noDecimals: true })}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs font-medium tabular-nums",
-                        region.isPositive ? "text-green-500" : "text-destructive",
-                      )}
-                    >
-                      {region.growth}
-                    </span>
+          <ScrollArea className="h-[280px] pr-4">
+            <div className="space-y-4">
+              {loadingClients ? (
+                <p className="text-muted-foreground text-sm">Cargando clientes...</p>
+              ) : recentClients.length > 0 ? (
+                recentClients.map((client) => (
+                  <div
+                    key={client.id}
+                    className="border-border/40 flex items-center justify-between border-b pb-2 last:border-0"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9 border">
+                        {client.fotoUrl && <AvatarImage src={client.fotoUrl} alt={client.nombre} />}
+                        <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold uppercase">
+                          {client.nombre.charAt(0)}
+                          {client.apellidos.charAt(0)}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="space-y-1">
+                        <p className="text-sm leading-none font-medium">
+                          {client.nombre} {client.apellidos}
+                        </p>
+                        <p className="text-muted-foreground text-xs">
+                          {client.codigoCliente} • <span className="capitalize">{client.estado}</span>
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-muted-foreground text-xs font-medium">{formatFecha(client.fechaIngreso)}</div>
                   </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Progress value={region.percentage} />
-                  <span className="text-muted-foreground text-xs font-medium tabular-nums">{region.percentage}%</span>
-                </div>
-              </div>
-            ))}
-          </div>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-sm">No hay clientes recientes.</p>
+              )}
+            </div>
+          </ScrollArea>
         </CardContent>
-        <CardFooter>
-          <div className="text-muted-foreground flex justify-between gap-1 text-xs">
-            <span>{regionSalesData.length} regions tracked</span>
-            <span>•</span>
-            <span>{regionSalesData.filter((r) => r.isPositive).length} regions growing</span>
-          </div>
-        </CardFooter>
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Action Items</CardTitle>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-destructive text-sm font-semibold">Alertas del Sistema</CardTitle>
+            <ShieldAlert className="text-destructive h-4 w-4" />
+          </div>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-2.5">
-            {actionItems.map((item) => (
-              <li key={item.id} className="space-y-2 rounded-md border px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox defaultChecked={item.checked} />
-                  <span className="text-sm font-medium">{item.title}</span>
-                  <span
-                    className={cn(
-                      "w-fit rounded-md px-2 py-1 text-xs font-medium",
-                      item.priority === "High" && "text-destructive bg-destructive/20",
-                      item.priority === "Medium" && "bg-yellow-500/20 text-yellow-500",
-                      item.priority === "Low" && "bg-green-500/20 text-green-500",
-                    )}
+          <ScrollArea className="h-[280px] pr-4">
+            <div className="space-y-4">
+              {loadingAlerts ? (
+                <p className="text-muted-foreground text-sm">Cargando alertas...</p>
+              ) : systemAlerts.length > 0 ? (
+                systemAlerts.map((alert) => (
+                  <Link
+                    key={alert.id}
+                    href={`/dashboard/crm/alertas/${alert.id}`}
+                    className="group border-destructive/20 bg-destructive/5 hover:bg-destructive/10 focus-visible:ring-destructive block space-y-2 rounded-lg border p-3 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
-                    {item.priority}
-                  </span>
-                </div>
-                <div className="text-muted-foreground text-xs font-medium">{item.desc}</div>
-                <div className="flex items-center gap-1">
-                  <Clock className="text-muted-foreground size-3" />
-                  <span className="text-muted-foreground text-xs font-medium">{item.due}</span>
-                </div>
-              </li>
-            ))}
-          </ul>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="text-destructive h-3.5 w-3.5" />
+                        <span className="text-destructive text-xs font-bold tracking-tight uppercase">
+                          {alert.accion}
+                        </span>
+                      </div>
+                      <span className="text-muted-foreground text-[10px] font-medium">
+                        {formatFecha(alert.fechaHora)}
+                      </span>
+                    </div>
+                    <p className="text-foreground line-clamp-2 text-xs font-medium">
+                      {alert.mensajeError || "Error desconocido en " + alert.tabla}
+                    </p>
+                    <div className="flex items-center gap-1">
+                      <Clock className="text-muted-foreground h-3 w-3" />
+                      <span className="text-muted-foreground text-[10px] font-semibold">Registro: {alert.id}</span>
+                      <span className="text-destructive/80 ml-auto text-[10px] font-semibold opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                        Ver detalle
+                      </span>
+                    </div>
+                  </Link>
+                ))
+              ) : (
+                <p className="text-muted-foreground text-sm">No se detectaron errores recientes.</p>
+              )}
+            </div>
+          </ScrollArea>
         </CardContent>
       </Card>
     </div>

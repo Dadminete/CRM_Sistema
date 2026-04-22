@@ -1,22 +1,19 @@
 "use client";
 
 import { useEffect, useState, lazy, Suspense } from "react";
+
 import { DashboardLoader } from "@/components/ui/loaders";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Lazy load components para reducir bundle inicial
-const InsightCards = lazy(() => 
-  import("./_components/insight-cards").then(mod => ({ default: mod.InsightCards }))
+const InsightCards = lazy(() => import("./_components/insight-cards").then((mod) => ({ default: mod.InsightCards })));
+const OverviewCards = lazy(() =>
+  import("./_components/overview-cards").then((mod) => ({ default: mod.OverviewCards })),
 );
-const OverviewCards = lazy(() => 
-  import("./_components/overview-cards").then(mod => ({ default: mod.OverviewCards }))
+const OperationalCards = lazy(() =>
+  import("./_components/operational-cards").then((mod) => ({ default: mod.OperationalCards })),
 );
-const OperationalCards = lazy(() => 
-  import("./_components/operational-cards").then(mod => ({ default: mod.OperationalCards }))
-);
-const TableCards = lazy(() => 
-  import("./_components/table-cards").then(mod => ({ default: mod.TableCards }))
-);
+const TableCards = lazy(() => import("./_components/table-cards").then((mod) => ({ default: mod.TableCards })));
 
 export default function Page() {
   const [data, setData] = useState<any>(null);
@@ -48,10 +45,14 @@ export default function Page() {
         <OverviewCards data={data.overview} history={data.history} />
       </Suspense>
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-        <OperationalCards boxes={data.boxes} discrepancias={data.overview.discrepancias} />
+        <OperationalCards
+          boxes={data.boxes}
+          discrepancias={data.overview.discrepancias}
+          activeSessions={data.activeSessions || []}
+        />
       </Suspense>
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
-        <TableCards recent={data.recent} />
+        <TableCards recent={data.recent} transfers={data.transfers} />
       </Suspense>
     </div>
   );

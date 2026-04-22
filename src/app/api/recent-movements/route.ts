@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { desc, and, gte, lte, eq, ne } from "drizzle-orm";
+import { endOfMonth, startOfMonth } from "date-fns";
+
 import { db } from "@/lib/db";
-import { movimientosContables, categoriasCuentas } from "@/lib/db/schema";
-import { desc, and, gte, lte, eq } from "drizzle-orm";
-import { startOfMonth, endOfMonth } from "date-fns";
+import { categoriasCuentas, movimientosContables } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,13 @@ export async function GET() {
     const now = new Date();
     const firstDay = startOfMonth(now);
     const lastDay = endOfMonth(now);
+
+    const traspasoCat = await db
+      .select({ id: categoriasCuentas.id })
+      .from(categoriasCuentas)
+      .where(eq(categoriasCuentas.codigo, "TRASP-001"))
+      .limit(1);
+    const traspasoCatId = traspasoCat[0]?.id ?? null;
 
     const movements = await db
       .select({
@@ -25,10 +33,13 @@ export async function GET() {
       .from(movimientosContables)
       .leftJoin(categoriasCuentas, eq(movimientosContables.categoriaId, categoriasCuentas.id))
       .where(
-        and(
-          gte(movimientosContables.fecha, firstDay.toISOString()),
-          lte(movimientosContables.fecha, lastDay.toISOString()),
-        ),
+        traspasoCatId
+          ? and(
+              gte(movimientosContables.fecha, firstDay.toISOString()),
+              lte(movimientosContables.fecha, lastDay.toISOString()),
+              ne(movimientosContables.categoriaId, traspasoCatId),
+            )
+          : and(gte(movimientosContables.fecha, firstDay.toISOString()), lte(movimientosContables.fecha, lastDay.toISOString())),
       )
       .orderBy(desc(movimientosContables.fecha));
 
@@ -36,8 +47,9 @@ export async function GET() {
       success: true,
       data: movements,
     });
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown error";
     console.error("Error fetching movements:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ success: false, error: message, data: [] }, { status: 200 });
   }
 }

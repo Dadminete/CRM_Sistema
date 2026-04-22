@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Landmark, Plus } from "lucide-react";
 import { siApple, siPaypal, siOpenai, siVercel, siFigma } from "simple-icons";
 
 import { SimpleIcon } from "@/components/simple-icon";
@@ -29,47 +29,63 @@ const recentPayments = [
   {
     id: 1,
     icon: siPaypal,
-    title: "Advance Payment",
-    subtitle: "Received via PayPal for Website Project",
+    title: "Pago Anticipado",
+    subtitle: "Recibido vía PayPal por Proyecto Web",
     type: "credit",
     amount: 1200,
-    date: "Jul 8",
+    date: "8 Jul",
   },
   {
     id: 2,
     icon: siOpenai,
-    title: "ChatGPT Subscription",
-    subtitle: "OpenAI monthly subscription",
+    title: "Suscripción ChatGPT",
+    subtitle: "Suscripción mensual de OpenAI",
     type: "debit",
     amount: 20,
-    date: "Jul 7",
+    date: "7 Jul",
   },
   {
     id: 3,
     icon: siVercel,
-    title: "Vercel Team Subscription",
-    subtitle: "Vercel cloud hosting charges",
+    title: "Suscripción Vercel Team",
+    subtitle: "Cargos de alojamiento en la nube de Vercel",
     type: "debit",
     amount: 160,
-    date: "Jul 4",
+    date: "4 Jul",
   },
   {
     id: 4,
     icon: siFigma,
     title: "Figma Pro",
-    subtitle: "Figma professional plan",
+    subtitle: "Plan profesional de Figma",
     type: "debit",
     amount: 35,
-    date: "Jul 2",
+    date: "2 Jul",
   },
 ];
 
-export function AccountOverview() {
+type AccountOverviewProps = {
+  title?: string;
+  description?: string;
+  virtualTabLabel?: string;
+  physicalTabLabel?: string;
+  cardHolderName?: string;
+  logoVariant?: "apple" | "bank";
+};
+
+export function AccountOverview({
+  title = "Mis Tarjetas",
+  description = "Resumen de tu tarjeta, balance y transacciones recientes en una sola vista.",
+  virtualTabLabel = "Virtual",
+  physicalTabLabel = "Física",
+  cardHolderName = "Arham Khan",
+  logoVariant = "apple",
+}: AccountOverviewProps) {
   return (
     <Card className="shadow-xs">
       <CardHeader className="items-center">
-        <CardTitle>My Cards</CardTitle>
-        <CardDescription>Your card summary, balance, and recent transactions in one view.</CardDescription>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
         <CardAction>
           <Button size="icon" variant="outline">
             <Plus className="size-4" />
@@ -79,21 +95,25 @@ export function AccountOverview() {
       <CardContent>
         <Tabs className="gap-4" defaultValue="virtual">
           <TabsList className="w-full">
-            <TabsTrigger value="virtual">Virtual</TabsTrigger>
+            <TabsTrigger value="virtual">{virtualTabLabel}</TabsTrigger>
             <TabsTrigger value="physical" disabled>
-              Physical
+              {physicalTabLabel}
             </TabsTrigger>
           </TabsList>
           <TabsContent value="virtual">
             <div className="space-y-4">
               <div className="bg-primary relative aspect-8/5 w-full max-w-96 overflow-hidden rounded-xl perspective-distant">
                 <div className="absolute top-6 left-6">
-                  <SimpleIcon icon={siApple} className="fill-primary-foreground size-8" />
+                  {logoVariant === "bank" ? (
+                    <Landmark className="text-primary-foreground size-8" />
+                  ) : (
+                    <SimpleIcon icon={siApple} className="fill-primary-foreground size-8" />
+                  )}
                 </div>
                 <div className="absolute top-1/2 w-full -translate-y-1/2">
                   <div className="flex items-end justify-between px-6">
                     <span className="text-accent font-mono text-lg leading-none font-medium tracking-wide uppercase">
-                      Arham Khan
+                      {cardHolderName}
                     </span>
                     <ChipSVG />
                   </div>
@@ -102,11 +122,11 @@ export function AccountOverview() {
 
               <div className="space-y-2 text-sm">
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Card Number</span>
+                  <span className="text-muted-foreground">Número de Tarjeta</span>
                   <span className="font-medium tabular-nums">•••• •••• 5416</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Expiry Date</span>
+                  <span className="text-muted-foreground">Fecha de Vencimiento</span>
                   <span className="font-medium tabular-nums">06/09</span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -114,31 +134,31 @@ export function AccountOverview() {
                   <span className="font-medium">•••</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Spending Limit</span>
+                  <span className="text-muted-foreground">Límite de Gasto</span>
                   <span className="font-medium tabular-nums">$62,000.00</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-muted-foreground">Available Balance</span>
+                  <span className="text-muted-foreground">Balance Disponible</span>
                   <span className="font-medium tabular-nums">$13,100.06</span>
                 </div>
               </div>
 
               <div className="flex gap-2">
                 <Button className="flex-1" variant="outline" size="sm">
-                  Freeze Card
+                  Congelar Tarjeta
                 </Button>
                 <Button className="flex-1" variant="outline" size="sm">
-                  Set Limit
+                  Establecer Límite
                 </Button>
                 <Button className="flex-1" variant="outline" size="sm">
-                  More
+                  Más
                 </Button>
               </div>
 
               <Separator />
 
               <div className="space-y-4">
-                <h6 className="text-muted-foreground text-sm uppercase">Recent Payments</h6>
+                <h6 className="text-muted-foreground text-sm uppercase">Pagos Recientes</h6>
 
                 <div className="space-y-4">
                   {recentPayments.map((transaction) => (
@@ -167,12 +187,14 @@ export function AccountOverview() {
                 </div>
 
                 <Button className="w-full" size="sm" variant="outline">
-                  View All Payments
+                  Ver Todos los Pagos
                 </Button>
               </div>
             </div>
           </TabsContent>
-          <TabsContent value="physical">Physical card details are currently unavailable</TabsContent>
+          <TabsContent value="physical">
+            Los detalles de la tarjeta física no están disponibles actualmente.
+          </TabsContent>
         </Tabs>
       </CardContent>
     </Card>

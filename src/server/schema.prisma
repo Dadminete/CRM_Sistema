@@ -538,7 +538,7 @@ model MovimientoInventario {
   id               String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   productoId       BigInt            @map("producto_id")
   usuarioId        String            @map("usuario_id") @db.Uuid
-  tipoMovimiento   String            @map("tipo_movimiento") @db.VarChar(20)
+  tipoMovimiento TipoMovimientoInventario @map("tipo_movimiento")
   cantidad         Int
   cantidadAnterior Int               @map("cantidad_anterior")
   cantidadNueva    Int               @map("cantidad_nueva")
@@ -569,8 +569,8 @@ model VentaPapeleria {
   descuentos       Decimal                 @default(0) @db.Decimal(10, 2)
   total            Decimal                 @db.Decimal(10, 2)
   moneda           String                  @default("USD") @db.VarChar(3)
-  metodoPago       String                  @map("metodo_pago") @db.VarChar(50)
-  estado           String                  @default("completada") @db.VarChar(20)
+  metodoPago MetodoPagoPapeleria @default(EFECTIVO) @map("metodo_pago")
+  estado EstadoVentaPapeleria @default(COMPLETADA)
   notas            String?
   createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt        DateTime                @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -1509,7 +1509,7 @@ model PagoCuentaPorPagar {
   cuentaPorPagarId   String         @map("cuenta_por_pagar_id") @db.Uuid
   monto              Decimal        @db.Decimal(12, 2)
   fechaPago          DateTime       @map("fecha_pago") @db.Date
-  metodoPago         String         @map("metodo_pago") @db.VarChar(50)
+  metodoPago MetodoPagoPapeleria @default(EFECTIVO) @map("metodo_pago")
   numeroReferencia   String?        @map("numero_referencia") @db.VarChar(100)
   observaciones      String?
   creadoPorId        String?        @map("creado_por") @db.Uuid
@@ -1701,4 +1701,36 @@ enum CategoriaCliente {
   VIEJO
   VIP
   INACTIVO
+}
+
+
+enum EstadoVentaPapeleria {
+  PENDIENTE
+  COMPLETADA
+  CANCELADA
+  DEVUELTA
+}
+
+enum MetodoPagoPapeleria {
+  EFECTIVO
+  TARJETA
+  TRANSFERENCIA
+  CREDITO
+  OTRO
+}
+
+enum TipoMovimientoInventario {
+  ENTRADA_COMPRA
+  SALIDA_VENTA
+  AJUSTE_POSITIVO
+  AJUSTE_NEGATIVO
+  MERMA
+  DEVOLUCION
+}
+
+enum EstadoCompraPapeleria {
+  BORRADOR
+  PENDIENTE
+  PROCESADA
+  CANCELADA
 }
