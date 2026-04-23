@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Sistema Gestion Mobile",
+    "slug": "sistema-gestion-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#0B132B"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B132B"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
