@@ -169,6 +169,8 @@ export const POST = withRateLimit(async (req: NextRequest) => {
 
     // Return user data (excluding sensitive info)
     return successResponse({
+      token,
+      sessionId,
       user: {
         id: user.id,
         username: user.username,

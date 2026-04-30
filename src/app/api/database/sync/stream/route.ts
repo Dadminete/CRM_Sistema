@@ -1,4 +1,3 @@
-import { optimizedSyncService } from "@/lib/db/optimized-sync-service";
 import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
@@ -9,25 +8,8 @@ export const GET = withAuth(
 
     const stream = new ReadableStream({
       async start(controller) {
-        const onLog = (msg: string) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ message: msg })}\n\n`));
-        };
-
-        try {
-          onLog("[CLIENTE] Conexión establecida. Iniciando Sincronización Incremental...");
-          
-          const result = await optimizedSyncService.syncAlteredTables(onLog);
-          
-          if (result.success) {
-            onLog("[SUCCESS] Proceso finalizado correctamente.");
-          } else {
-            onLog(`[ERROR] ${result.error || "Error desconocido"}`);
-          }
-        } catch (error: any) {
-          onLog(`[CRITICAL] ${error.message}`);
-        } finally {
-          controller.close();
-        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ message: "La sincronización incremental ha sido desactivada. El sistema opera ahora al 100% en la nube." })}\n\n`));
+        controller.close();
       },
     });
 
@@ -41,3 +23,4 @@ export const GET = withAuth(
   },
   { requiredPermission: "database:manage" }
 );
+

@@ -37,6 +37,9 @@ export interface ClienteListItem {
   email?: string | null;
   estado: string;
   montoMensual?: string;
+  fotoUrl?: string | null;
+  categoriaCliente?: "NUEVO" | "VIEJO" | "VIP" | "INACTIVO";
+  tipoCliente?: string;
 }
 
 export interface ClienteDetail extends ClienteListItem {
@@ -44,6 +47,8 @@ export interface ClienteDetail extends ClienteListItem {
   ciudad?: string | null;
   provincia?: string | null;
   montoTotal?: string;
+  cedula?: string | null;
+  telefonoSecundario?: string | null;
 }
 
 export interface SuscripcionItem {
@@ -57,4 +62,17 @@ export interface SuscripcionItem {
   precio_mensual?: string;
   precioMensual?: string;
   estado: string;
+}
+
+export interface FacturaListItem {
+  id: string;
+  numeroFactura: string;
+  clienteId: string;
+  clienteNombre: string;
+  clienteApellidos: string;
+  fechaFactura: string;
+  fechaVencimiento: string;
+  estado: string;
+  total: number | string;
+  pendiente?: number | string;
 }

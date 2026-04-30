@@ -25,7 +25,7 @@ export async function getClientes(search = ""): Promise<ClienteListItem[]> {
   const response = await http.get<ApiResponse<PaginatedPayload<ClienteListItem>>>("/api/clientes", {
     params: {
       page: 1,
-      limit: 50,
+      limit: 1000,
       search,
       sortBy: "nombre",
       sortOrder: "asc",

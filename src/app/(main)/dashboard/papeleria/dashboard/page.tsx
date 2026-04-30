@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 
 import { DollarSign, Package, ShoppingCart, TrendingDown } from "lucide-react";
 import {
@@ -24,9 +24,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-// ────────────────────────────────────────────────────────
-// Types
-// ────────────────────────────────────────────────────────
 type Venta = {
   id: string;
   numeroVenta: string;
@@ -37,34 +34,25 @@ type Venta = {
   estado: string;
 };
 
-type DetalleFila = {
-  producto_nombre: string;
-  cantidad: number;
-  precio_unitario: number;
-  subtotal: number;
+type DashboardData = {
+  metrics: {
+    netSalesToday: number;
+    salesTodayCount: number;
+    netSalesMonth: number;
+    salesMonthCount: number;
+    totalProducts: number;
+    lowStockProducts: number;
+  };
+  charts: {
+    dailyNetSales: Array<{ fecha: string; total: number }>;
+    paymentDistribution: Array<{ name: string; value: number }>;
+    topProducts: Array<{ nombre: string; cantidad: number }>;
+  };
+  latestSales: Venta[];
 };
 
-type VentaCompleta = Venta & {
-  items: DetalleFila[];
-};
-
-type Producto = {
-  id: number;
-  codigo: string;
-  nombre: string;
-  categoriaId: number;
-  precioVenta: number;
-  stockActual: number;
-};
-
-// ────────────────────────────────────────────────────────
-// Constantes
-// ────────────────────────────────────────────────────────
 const COLORES = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
 
-// ────────────────────────────────────────────────────────
-// Componentes Auxiliares
-// ────────────────────────────────────────────────────────
 function MetricaCard({
   titulo,
   valor,
@@ -92,29 +80,29 @@ function MetricaCard({
   );
 }
 
-function renderGraficoLineas(datos: unknown[], loading: boolean) {
+function renderGraficoLineas(datos: Array<{ fecha: string; total: number }>, loading: boolean) {
   if (loading) return <Skeleton className="h-80 w-full" />;
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <LineChart data={datos as Record<string, unknown>[]}>
+      <LineChart data={datos}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="fecha" />
         <YAxis />
-        <Tooltip />
+        <Tooltip formatter={(value) => `RD$ ${(Number(value) || 0).toLocaleString("es-DO", { maximumFractionDigits: 2 })}`} />
         <Line type="monotone" dataKey="total" stroke="#3b82f6" strokeWidth={2} />
       </LineChart>
     </ResponsiveContainer>
   );
 }
 
-function renderGraficoBarras(datos: unknown[], loading: boolean) {
+function renderGraficoBarras(datos: Array<{ nombre: string; cantidad: number }>, loading: boolean) {
   if (loading) return <Skeleton className="h-80 w-full" />;
-  if ((datos as Record<string, unknown>[]).length === 0) {
+  if (datos.length === 0) {
     return <div className="text-muted-foreground flex h-80 items-center justify-center">Sin datos</div>;
   }
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={datos as Record<string, unknown>[]}>
+      <BarChart data={datos}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="nombre" />
         <YAxis />
@@ -125,249 +113,121 @@ function renderGraficoBarras(datos: unknown[], loading: boolean) {
   );
 }
 
-// ────────────────────────────────────────────────────────
-// Dashboard Component
-// ────────────────────────────────────────────────────────
 export default function PapeleriaDashboard() {
-  const [ventas, setVentas] = useState<VentaCompleta[]>([]);
-  const [productos, setProductos] = useState<Producto[]>([]);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingRange, setLoadingRange] = useState(false);
+  const [rangeDays, setRangeDays] = useState<7 | 30 | 90>(30);
 
-  // ── Cargar datos ────────────────────────────────────
-  const cargarDatos = async () => {
+  const cargarDatos = async (days: 7 | 30 | 90) => {
     try {
-      setLoading(true);
-      const [ventasRes, productosRes] = await Promise.all([
-        fetch("/api/papeleria/ventas"),
-        fetch("/api/papeleria/productos"),
-      ]);
+      if (!data) setLoading(true);
+      else setLoadingRange(true);
 
-      const ventasData = (await ventasRes.json()) as { success: boolean; data: VentaCompleta[] };
-      const productosData = (await productosRes.json()) as { success: boolean; data: Producto[] };
+      const response = await fetch(`/api/papeleria/dashboard?rangeDays=${days}`, { cache: "no-store" });
+      const json = (await response.json()) as { success: boolean; data: DashboardData };
 
-      if (ventasData.data.length > 0) {
-        const ventasNormalizadas = ventasData.data.map((v) => ({
-          ...v,
-          total: Number(v.total) || 0,
-          items: v.items.map((item) => ({
-            ...item,
-            cantidad: Number(item.cantidad) || 0,
-            precio_unitario: Number(item.precio_unitario) || 0,
-            subtotal: Number(item.subtotal) || 0,
-          })),
-        }));
-        setVentas(ventasNormalizadas);
+      if (!json.success || !json.data) {
+        throw new Error("No se pudo cargar el dashboard");
       }
-      if (productosData.data.length > 0) {
-        const productosNormalizados = productosData.data.map((p) => ({
-          ...p,
-          id: Number(p.id) || 0,
-          precioVenta: Number(p.precioVenta) || 0,
-          stockActual: Number(p.stockActual) || 0,
-        }));
-        setProductos(productosNormalizados);
-      }
+
+      setData(json.data);
     } catch (_error) {
       toast.error("Error cargando datos del dashboard");
     } finally {
       setLoading(false);
+      setLoadingRange(false);
     }
   };
 
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    cargarDatos(rangeDays);
+  }, [rangeDays]);
 
-  // ── Calcular métricas (delegado a función helper)
-  const metricas = useMemo(() => calcularMetricas(ventas, productos), [ventas, productos]);
+  const metricas = data?.metrics;
+  const dailyNetSales = data?.charts.dailyNetSales ?? [];
+  const topProducts = data?.charts.topProducts ?? [];
+  const metodosPago = data?.charts.paymentDistribution ?? [];
+  const ultimasVentas = data?.latestSales ?? [];
 
-  // ────────────────────────────────────────────────────
-  // Render
-  // ────────────────────────────────────────────────────
-  return renderDashboard(
-    metricas,
-    loading,
-    cargarDatos,
-    calcularVentasPorDia(metricas.ventasMes),
-    calcularProductosMasVendidos(ventas),
-    calcularMetodosPago(ventas),
-    ventas.sort((a, b) => new Date(b.fechaVenta).getTime() - new Date(a.fechaVenta).getTime()).slice(0, 10),
-  );
-}
-
-// ────────────────────────────────────────────────────────
-// Funciones Helper para Dividir Lógica
-// ────────────────────────────────────────────────────────
-function calcularMetricas(ventas: VentaCompleta[], productos: Producto[]) {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-
-  const ventasHoy = ventas.filter((v) => {
-    const fechaVenta = new Date(v.fechaVenta);
-    fechaVenta.setHours(0, 0, 0, 0);
-    return fechaVenta.getTime() === hoy.getTime();
-  });
-
-  const totalVentasHoy = Number(
-    ventasHoy.reduce((sum, v) => {
-      const total = Number(v.total) || 0;
-      return sum + total;
-    }, 0),
-  );
-
-  const inicioMes = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
-  const ventasMes = ventas.filter((v) => {
-    const fechaVenta = new Date(v.fechaVenta);
-    return fechaVenta >= inicioMes && fechaVenta <= hoy;
-  });
-
-  const totalVentasMes = Number(
-    ventasMes.reduce((sum, v) => {
-      const total = Number(v.total) || 0;
-      return sum + total;
-    }, 0),
-  );
-
-  return {
-    totalVentasHoy,
-    ventasHoy,
-    totalVentasMes,
-    ventasMes,
-    totalProductos: productos.length,
-    productosStockBajo: productos.filter((p) => Number(p.stockActual) <= 10).length,
-  };
-}
-
-function calcularVentasPorDia(ventasMes: VentaCompleta[]) {
-  const hoy = new Date();
-  hoy.setHours(0, 0, 0, 0);
-
-  const datos = new Map<string, number>();
-  for (let i = 6; i >= 0; i--) {
-    const fecha = new Date(hoy);
-    fecha.setDate(fecha.getDate() - i);
-    const key = fecha.toLocaleDateString("es-DO", { month: "short", day: "numeric" });
-    datos.set(key, 0);
-  }
-
-  ventasMes.forEach((v) => {
-    const fecha = new Date(v.fechaVenta);
-    const key = fecha.toLocaleDateString("es-DO", { month: "short", day: "numeric" });
-    if (datos.has(key)) {
-      const total = Number(v.total) || 0;
-      const actual = datos.get(key) ?? 0;
-      datos.set(key, actual + total);
-    }
-  });
-
-  return Array.from(datos.entries()).map(([fecha, total]) => ({ fecha, total: Math.round(total * 100) / 100 }));
-}
-
-function calcularProductosMasVendidos(ventas: VentaCompleta[]) {
-  const mapa = new Map<string, number>();
-  ventas.forEach((v) => {
-    v.items.forEach((item) => {
-      const cantidad = Number(item.cantidad) || 0;
-      const actual = mapa.get(item.producto_nombre) ?? 0;
-      mapa.set(item.producto_nombre, actual + cantidad);
-    });
-  });
-
-  return Array.from(mapa.entries())
-    .map(([nombre, cantidad]) => ({ nombre, cantidad }))
-    .sort((a, b) => b.cantidad - a.cantidad)
-    .slice(0, 5);
-}
-
-function calcularMetodosPago(ventas: VentaCompleta[]) {
-  const mapa = new Map<string, number>();
-  ventas.forEach((v) => {
-    const total = Number(v.total) || 0;
-    const actual = mapa.get(v.metodoPago) ?? 0;
-    mapa.set(v.metodoPago, actual + total);
-  });
-
-  return Array.from(mapa.entries())
-    .map(([metodo, total]) => ({
-      name: metodo,
-      value: Math.round(total * 100) / 100,
-    }))
-    .filter((item) => !isNaN(item.value) && item.value > 0);
-}
-
-function renderDashboard(
-  metricas: ReturnType<typeof calcularMetricas>,
-  loading: boolean,
-  cargarDatos: () => Promise<void>,
-  ventasPorDia: ReturnType<typeof calcularVentasPorDia>,
-  productosMasVendidos: ReturnType<typeof calcularProductosMasVendidos>,
-  metodosPago: ReturnType<typeof calcularMetodosPago>,
-  ultimasVentas: VentaCompleta[],
-) {
-  // ────────────────────────────────────────────────────
-  // Render
-  // ────────────────────────────────────────────────────
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Dashboard Papelería</h1>
-        <Button onClick={cargarDatos}>Refrescar</Button>
+        <div className="flex items-center gap-2">
+          {[7, 30, 90].map((days) => (
+            <Button
+              key={days}
+              size="sm"
+              variant={rangeDays === days ? "default" : "outline"}
+              disabled={loadingRange}
+              onClick={() => setRangeDays(days as 7 | 30 | 90)}
+            >
+              {days}d
+            </Button>
+          ))}
+          <Button onClick={() => cargarDatos(rangeDays)} disabled={loadingRange}>
+            {loadingRange ? "Actualizando..." : "Refrescar"}
+          </Button>
+        </div>
       </div>
 
-      {/* Métricas Clave */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricaCard
-          titulo="Ventas Hoy"
+          titulo="Ventas Netas Hoy"
           valor={
             loading
               ? "Cargando..."
-              : `RD$ ${isNaN(metricas.totalVentasHoy) ? "0.00" : metricas.totalVentasHoy.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `RD$ ${(metricas?.netSalesToday || 0).toLocaleString("es-DO", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
           }
-          subtitulo={`${metricas.ventasHoy.length} venta(s)`}
+          subtitulo={`${metricas?.salesTodayCount || 0} venta(s) completada(s)`}
           icono={<DollarSign className="h-4 w-4" />}
           loading={loading}
         />
         <MetricaCard
-          titulo="Ventas Mes"
+          titulo="Ventas Netas Mes"
           valor={
             loading
               ? "Cargando..."
-              : `RD$ ${isNaN(metricas.totalVentasMes) ? "0.00" : metricas.totalVentasMes.toLocaleString("es-DO", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+              : `RD$ ${(metricas?.netSalesMonth || 0).toLocaleString("es-DO", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}`
           }
-          subtitulo={`${metricas.ventasMes.length} venta(s)`}
+          subtitulo={`${metricas?.salesMonthCount || 0} venta(s) completada(s)`}
           icono={<TrendingDown className="h-4 w-4" />}
           loading={loading}
         />
         <MetricaCard
           titulo="Total Productos"
-          valor={loading ? "Cargando..." : String(metricas.totalProductos)}
-          subtitulo="En catálogo"
+          valor={loading ? "Cargando..." : String(metricas?.totalProducts || 0)}
+          subtitulo="Productos activos"
           icono={<Package className="h-4 w-4" />}
           loading={loading}
         />
         <MetricaCard
           titulo="Stock Bajo"
-          valor={loading ? "Cargando..." : String(metricas.productosStockBajo)}
-          subtitulo="Productos ≤ 10 unidades"
+          valor={loading ? "Cargando..." : String(metricas?.lowStockProducts || 0)}
+          subtitulo="Stock actual <= stock mínimo"
           icono={<ShoppingCart className="h-4 w-4" />}
           loading={loading}
         />
       </div>
 
-      {/* Gráficos */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        {/* Ventas por Día */}
         <Card>
           <CardHeader>
-            <CardTitle>Ventas Últimos 7 Días</CardTitle>
+            <CardTitle>Ventas Netas Últimos {rangeDays} Días</CardTitle>
           </CardHeader>
-          <CardContent>{renderGraficoLineas(ventasPorDia, loading)}</CardContent>
+          <CardContent>{renderGraficoLineas(dailyNetSales, loading)}</CardContent>
         </Card>
 
-        {/* Métodos de Pago */}
         <Card>
           <CardHeader>
-            <CardTitle>Distribución por Método de Pago</CardTitle>
+            <CardTitle>Distribución por Método de Pago ({rangeDays} días)</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -388,8 +248,8 @@ function renderDashboard(
                     fill="#8884d8"
                     dataKey="value"
                   >
-                    {metodosPago.map((item) => (
-                      <Cell key={`color-${item.name}`} fill={COLORES[metodosPago.indexOf(item) % COLORES.length]} />
+                    {metodosPago.map((item, idx) => (
+                      <Cell key={`color-${item.name}`} fill={COLORES[idx % COLORES.length]} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -406,16 +266,14 @@ function renderDashboard(
           </CardContent>
         </Card>
 
-        {/* Productos Más Vendidos */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Top 5 Productos Más Vendidos</CardTitle>
+            <CardTitle>Top 5 Productos Más Vendidos ({rangeDays} días)</CardTitle>
           </CardHeader>
-          <CardContent>{renderGraficoBarras(productosMasVendidos, loading)}</CardContent>
+          <CardContent>{renderGraficoBarras(topProducts, loading)}</CardContent>
         </Card>
       </div>
 
-      {/* Últimas Ventas */}
       <Card>
         <CardHeader>
           <CardTitle>Últimas 10 Ventas</CardTitle>
@@ -435,7 +293,7 @@ function renderDashboard(
                     <TableHead>Nº Venta</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Cliente</TableHead>
-                    <TableHead>Total</TableHead>
+                    <TableHead>Neto</TableHead>
                     <TableHead>Método</TableHead>
                     <TableHead>Estado</TableHead>
                   </TableRow>

@@ -5,15 +5,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { Clock, UserPlus, AlertTriangle, ShieldAlert } from "lucide-react";
-import { FunnelChart, Funnel, LabelList } from "recharts";
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/chart";
+import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/utils";
-
-import { salesPipelineChartData, salesPipelineChartConfig } from "./crm.config";
 
 type RecentClient = {
   id: string;
@@ -34,11 +33,38 @@ type SystemAlert = {
   tabla: string;
 };
 
+type SalesPoint = {
+  period: string;
+  label: string;
+  total: number;
+};
+
+type PapeleriaSalesResponse = {
+  success: boolean;
+  data?: {
+    monthly: SalesPoint[];
+    biweekly: SalesPoint[];
+  };
+};
+
+const papeleriaSalesChartConfig = {
+  total: {
+    label: "Ventas",
+    color: "var(--chart-1)",
+  },
+} as ChartConfig;
+
 export function OperationalCards() {
   const [recentClients, setRecentClients] = useState<RecentClient[]>([]);
   const [systemAlerts, setSystemAlerts] = useState<SystemAlert[]>([]);
+  const [salesView, setSalesView] = useState<"monthly" | "biweekly">("monthly");
+  const [papeleriaSales, setPapeleriaSales] = useState<{ monthly: SalesPoint[]; biweekly: SalesPoint[] }>({
+    monthly: [],
+    biweekly: [],
+  });
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
+  const [loadingSales, setLoadingSales] = useState(true);
 
   useEffect(() => {
     fetch("/api/crm/recent-clients")
@@ -54,6 +80,18 @@ export function OperationalCards() {
         if (json.success) setSystemAlerts(json.data);
       })
       .finally(() => setLoadingAlerts(false));
+
+    fetch("/api/crm/papeleria-sales", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json: PapeleriaSalesResponse) => {
+        if (json.success && json.data) {
+          setPapeleriaSales({
+            monthly: json.data.monthly ?? [],
+            biweekly: json.data.biweekly ?? [],
+          });
+        }
+      })
+      .finally(() => setLoadingSales(false));
   }, []);
 
   const formatFecha = (dateStr: string) => {
@@ -69,24 +107,68 @@ export function OperationalCards() {
     }
   };
 
+  const activeSalesData = salesView === "monthly" ? papeleriaSales.monthly : papeleriaSales.biweekly;
+  const totalSales = activeSalesData.reduce((acc, row) => acc + Number(row.total || 0), 0);
+
   return (
     <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-3">
       <Card>
-        <CardHeader>
-          <CardTitle>Sales Pipeline</CardTitle>
+        <CardHeader className="gap-3">
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Ventas Papaleria</CardTitle>
+            <Tabs value={salesView} onValueChange={(value) => setSalesView(value as "monthly" | "biweekly") }>
+              <TabsList className="h-8">
+                <TabsTrigger value="monthly" className="px-2 text-xs">
+                  Mensual
+                </TabsTrigger>
+                <TabsTrigger value="biweekly" className="px-2 text-xs">
+                  Quincenal
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </CardHeader>
         <CardContent className="size-full">
-          <ChartContainer config={salesPipelineChartConfig} className="size-full">
-            <FunnelChart margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
-              <Funnel className="stroke-card stroke-2" dataKey="value" data={salesPipelineChartData}>
-                <LabelList className="fill-foreground stroke-0" dataKey="stage" position="right" offset={10} />
-                <LabelList className="fill-foreground stroke-0" dataKey="value" position="left" offset={10} />
-              </Funnel>
-            </FunnelChart>
-          </ChartContainer>
+          {loadingSales ? (
+            <p className="text-muted-foreground text-sm">Cargando ventas de papeleria...</p>
+          ) : activeSalesData.length ? (
+            <ChartContainer config={papeleriaSalesChartConfig} className="size-full min-h-56">
+              <BarChart data={activeSalesData} margin={{ top: 8, right: 8, left: 8, bottom: 0 }}>
+                <CartesianGrid vertical={false} />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  interval={0}
+                  height={salesView === "biweekly" ? 56 : 30}
+                  angle={salesView === "biweekly" ? -30 : 0}
+                  textAnchor={salesView === "biweekly" ? "end" : "middle"}
+                  tick={{ fontSize: salesView === "biweekly" ? 10 : 11 }}
+                  tickFormatter={(value: string) =>
+                    salesView === "biweekly" ? value.replace("1ra", "Q1").replace("2da", "Q2") : value
+                  }
+                />
+                <YAxis tickLine={false} axisLine={false} tickMargin={8} width={70} />
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      labelFormatter={(label) => `Periodo: ${label}`}
+                      formatter={(value) => [formatCurrency(Number(value)), "Ventas"]}
+                    />
+                  }
+                />
+                <Bar dataKey="total" fill="var(--color-total)" radius={[4, 4, 0, 0]} maxBarSize={34} />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <p className="text-muted-foreground text-sm">No hay ventas de papeleria para el periodo seleccionado.</p>
+          )}
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground text-xs">Leads increased by 18.2% since last month.</p>
+          <p className="text-muted-foreground text-xs">
+            Ventas netas {salesView === "monthly" ? "mensuales" : "quincenales"}: {formatCurrency(totalSales)}
+          </p>
         </CardFooter>
       </Card>
 

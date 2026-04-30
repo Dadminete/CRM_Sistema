@@ -17,6 +17,7 @@ const TableCards = lazy(() => import("./_components/table-cards").then((mod) => 
 
 export default function Page() {
   const [data, setData] = useState<any>(null);
+  const [discrepancias, setDiscrepancias] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -25,6 +26,14 @@ export default function Page() {
       .then((res) => {
         if (res.success) {
           setData(res.data);
+          setDiscrepancias(res.data?.overview?.discrepancias ?? 0);
+
+          fetch("/api/cajas/dashboard/discrepancias", { cache: "no-store" })
+            .then((r) => r.json())
+            .then((d) => {
+              if (d.success) setDiscrepancias(Number(d.data?.discrepancias || 0));
+            })
+            .catch(() => {});
         }
       })
       .finally(() => setLoading(false));
@@ -47,7 +56,7 @@ export default function Page() {
       <Suspense fallback={<Skeleton className="h-64 w-full" />}>
         <OperationalCards
           boxes={data.boxes}
-          discrepancias={data.overview.discrepancias}
+          discrepancias={discrepancias}
           activeSessions={data.activeSessions || []}
         />
       </Suspense>

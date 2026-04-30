@@ -126,6 +126,25 @@ export async function GET() {
       .sort((a, b) => b.deudaTotal - a.deudaTotal)
       .slice(0, 10);
 
+    // Current Month Specific Totals
+    const [pendientesMes] = await db
+      .select({ count: sql<number>`COUNT(*)::int`.as("count"), monto: sumField(cuentasPorCobrar.montoPendiente, "monto") })
+      .from(cuentasPorCobrar)
+      .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
+      .where(and(gte(facturasClientes.fechaFactura, monthStart.toISOString().split("T")[0]), lt(facturasClientes.fechaFactura, nextMonthStart.toISOString().split("T")[0]), gt(cuentasPorCobrar.montoPendiente, "0"), or(...PENDING_STATES.map((state) => ilike(facturasClientes.estado, state)))));
+
+    const [parcialesMes] = await db
+      .select({ count: sql<number>`COUNT(*)::int`.as("count"), monto: sumField(cuentasPorCobrar.montoPendiente, "monto") })
+      .from(cuentasPorCobrar)
+      .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
+      .where(and(gte(facturasClientes.fechaFactura, monthStart.toISOString().split("T")[0]), lt(facturasClientes.fechaFactura, nextMonthStart.toISOString().split("T")[0]), gt(cuentasPorCobrar.montoPendiente, "0"), or(...PARTIAL_STATES.map((state) => ilike(facturasClientes.estado, state)))));
+
+    const [adelantadasMes] = await db
+      .select({ count: sql<number>`COUNT(*)::int`.as("count"), monto: sumField(cuentasPorCobrar.montoPendiente, "monto") })
+      .from(cuentasPorCobrar)
+      .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
+      .where(and(gte(facturasClientes.fechaFactura, monthStart.toISOString().split("T")[0]), lt(facturasClientes.fechaFactura, nextMonthStart.toISOString().split("T")[0]), gt(cuentasPorCobrar.montoPendiente, "0"), or(...ADVANCE_STATES.map((state) => ilike(facturasClientes.estado, state)))));
+
     const recientes = await db
       .select({
         id: facturasClientes.id,
@@ -134,92 +153,60 @@ export async function GET() {
         clienteNombre: clientes.nombre,
         clienteApellidos: clientes.apellidos,
         fechaFactura: facturasClientes.fechaFactura,
-        fechaVencimiento: facturasClientes.fechaVencimiento,
         estado: facturasClientes.estado,
         total: facturasClientes.total,
+        ultimaFechaPago: sql<string>`MAX(${pagosClientes.fechaPago})`.as("ultima_fecha_pago"),
       })
       .from(facturasClientes)
       .innerJoin(clientes, eq(facturasClientes.clienteId, clientes.id))
-      .orderBy(desc(facturasClientes.fechaFactura), desc(facturasClientes.createdAt))
-      .limit(10);
+      .leftJoin(pagosClientes, eq(facturasClientes.id, pagosClientes.facturaId))
+      .groupBy(facturasClientes.id, clientes.id)
+      .orderBy(sql`ultima_fecha_pago DESC NULLS LAST`, desc(facturasClientes.fechaFactura))
+      .limit(20);
 
-    const vencidas = await db
+    const tendenciaCobros = await db
       .select({
-        id: facturasClientes.id,
-        numeroFactura: facturasClientes.numeroFactura,
-        clienteId: clientes.id,
-        clienteNombre: clientes.nombre,
-        clienteApellidos: clientes.apellidos,
-        fechaVencimiento: cuentasPorCobrar.fechaVencimiento,
-        montoPendiente: cuentasPorCobrar.montoPendiente,
-        diasVencido: cuentasPorCobrar.diasVencido,
-        estado: facturasClientes.estado,
+        dia: sql<string>`TO_CHAR(${pagosClientes.fechaPago}, 'YYYY-MM-DD')`.as("dia"),
+        monto: sumField(pagosClientes.monto, "monto"),
       })
-      .from(cuentasPorCobrar)
-      .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
-      .innerJoin(clientes, eq(cuentasPorCobrar.clienteId, clientes.id))
-      .where(and(gt(cuentasPorCobrar.montoPendiente, "0"), gte(cuentasPorCobrar.diasVencido, 1)))
-      .orderBy(desc(cuentasPorCobrar.diasVencido), asc(cuentasPorCobrar.fechaVencimiento))
-      .limit(10);
-
-    const [pendienteGlobal] = await db
-      .select({
-        monto: sumField(cuentasPorCobrar.montoPendiente, "monto"),
-      })
-      .from(cuentasPorCobrar)
-      .innerJoin(facturasClientes, eq(cuentasPorCobrar.facturaId, facturasClientes.id))
+      .from(pagosClientes)
       .where(
         and(
-          gt(cuentasPorCobrar.montoPendiente, "0"),
-          or(
-            ...PENDING_STATES.map((state) => ilike(facturasClientes.estado, state)),
-            ...PARTIAL_STATES.map((state) => ilike(facturasClientes.estado, state)),
-            ...ADVANCE_STATES.map((state) => ilike(facturasClientes.estado, state))
-          )
+          gte(pagosClientes.fechaPago, monthStart.toISOString().split("T")[0]),
+          lt(pagosClientes.fechaPago, nextMonthStart.toISOString().split("T")[0])
         )
-      );
-
-    const [pagadasMes] = await db
-      .select({
-        count: sql<number>`COUNT(*)::int`.as("count"),
-        monto: sumField(facturasClientes.total, "monto"),
-      })
-      .from(facturasClientes)
-      .where(
-        and(
-          gte(facturasClientes.fechaFactura, monthStart.toISOString().split("T")[0]),
-          lt(facturasClientes.fechaFactura, nextMonthStart.toISOString().split("T")[0]),
-          or(...PAID_STATES.map((state) => ilike(facturasClientes.estado, state)))
-        )
-      );
+      )
+      .groupBy(sql`dia`)
+      .orderBy(asc(sql`dia`));
 
     return jsonResponse({
       success: true,
       data: {
         resumen: {
-          totalFacturas: Number(totals?.totalFacturas || 0),
-          montoFacturado: Number(totals?.montoFacturado || 0),
-          facturasPendientes: Number(pendientes?.count || 0),
-          montoPendiente: Number(pendientes?.montoPendiente || 0),
-          facturasParciales: Number(parciales?.count || 0),
-          montoParcialPendiente: Number(parciales?.montoPendiente || 0),
-          facturasAdelantadas: Number(adelantadas?.count || 0),
-          montoAdelantadoPendiente: Number(adelantadas?.montoPendiente || 0),
-          facturasPagadas: Number(pagadas?.count || 0),
-          montoPagado: Number(pagadas?.monto || 0),
-          facturasAnuladas: Number(anuladas?.count || 0),
-          montoAnulado: Number(anuladas?.monto || 0),
-          cobradoMesActual: Number(cobradoMes?.monto || 0),
+          // Mobile Specific (Matching FacturasScreen.tsx expectations)
           facturadoMesActual: Number(facturadoMes?.monto || 0),
-          montoPendienteGlobal: Number(pendienteGlobal?.monto || 0),
-          pagadasMesActual: {
-            count: Number(pagadasMes?.count || 0),
-            monto: Number(pagadasMes?.monto || 0),
-          },
+          cobradoMesActual: Number(cobradoMes?.monto || 0),
+          montoPendienteGlobal: Number(pendientes?.montoPendiente || 0),
+          montoAdelantadoPendiente: Number(adelantadas?.montoPendiente || 0),
+          facturasParciales: Number(parciales?.count || 0),
+          
+          // Original/Legacy fields for web compat
+          montoFacturadoMes: Number(facturadoMes?.monto || 0),
+          montoPagadoMes: Number(cobradoMes?.monto || 0),
+          montoPendienteMes: Number(pendientesMes?.monto || 0),
+          montoParcialMes: Number(parcialesMes?.monto || 0),
+          montoAdelantadoMes: Number(adelantadasMes?.monto || 0),
+          facturasPendientesMes: Number(pendientesMes?.count || 0),
+          facturasParcialesMes: Number(parcialesMes?.count || 0),
+          facturasAdelantadasMes: Number(adelantadasMes?.count || 0),
+
+          // Daily Trend
+          tendenciaCobros: tendenciaCobros.map(t => ({
+            dia: t.dia,
+            monto: Number(t.monto)
+          })),
         },
-        topDeudores,
         recientes,
-        vencidas,
       },
     });
   } catch (error: any) {

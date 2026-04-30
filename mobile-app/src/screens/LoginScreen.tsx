@@ -1,17 +1,35 @@
 import React, { useState } from "react";
-import { ActivityIndicator, Pressable, SafeAreaView, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
+import { Eye, EyeOff, Lock, User } from "lucide-react-native";
 
 import { useAuth } from "@/context/AuthContext";
+import { useTheme } from "@/context/ThemeContext";
 import { getApiErrorMessage } from "@/services/http";
-import { appColors } from "@/theme";
+import { darkTheme, lightTheme, appRadius, appShadows, appSpacing } from "@/theme";
 
 export function LoginScreen() {
   const { signIn } = useAuth();
+  const { theme } = useTheme();
+  const colors = theme === "dark" ? darkTheme : lightTheme;
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [focusedField, setFocusedField] = useState<"username" | "password" | null>(null);
 
   const canSubmit = username.trim().length > 0 && password.length > 0;
 
@@ -30,111 +48,217 @@ export function LoginScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <View style={styles.container}>
-        <Text style={styles.title}>Sistema de Gestion</Text>
-        <Text style={styles.subtitle}>Accede a clientes, suscripciones y facturas desde tu movil</Text>
+    <View style={[styles.baseContainer, { backgroundColor: colors.bg }]}>
+      <StatusBar barStyle={theme === "dark" ? "light-content" : "dark-content"} />
+      
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.keyboardView}
+        >
+          <View style={styles.content}>
+            <View style={styles.header}>
+              <LinearGradient
+                colors={[colors.primary, colors.secondary]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.logoBadge}
+              >
+                <Lock color="#FFF" size={32} />
+              </LinearGradient>
+              <Text style={[styles.title, { color: colors.text }]}>SISTEMA</Text>
+              <Text style={[styles.subtitle, { color: colors.textMuted }]}>Gestión Inteligente v3.0</Text>
+            </View>
 
-        <View style={styles.card}>
-          <Text style={styles.label}>Usuario</Text>
-          <TextInput
-            placeholder="Ingresa tu usuario"
-            placeholderTextColor={appColors.textMuted}
-            style={styles.input}
-            autoCapitalize="none"
-            value={username}
-            onChangeText={setUsername}
-          />
+            <View style={styles.form}>
+              <View style={styles.inputContainer}>
+                <View style={[styles.inputWrapper, { 
+                  backgroundColor: colors.surface, 
+                  borderColor: focusedField === "username" ? colors.primary : colors.border 
+                }]}>
+                  <User size={20} color={focusedField === "username" ? colors.primary : colors.textDim} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Usuario"
+                    placeholderTextColor={colors.textDim}
+                    style={[styles.input, { color: colors.text }]}
+                    autoCapitalize="none"
+                    value={username}
+                    onChangeText={setUsername}
+                    onFocus={() => setFocusedField("username")}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                </View>
+              </View>
 
-          <Text style={styles.label}>Contrasena</Text>
-          <TextInput
-            placeholder="Ingresa tu contrasena"
-            placeholderTextColor={appColors.textMuted}
-            style={styles.input}
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-          />
+              <View style={styles.inputContainer}>
+                <View style={[styles.inputWrapper, { 
+                  backgroundColor: colors.surface, 
+                  borderColor: focusedField === "password" ? colors.primary : colors.border 
+                }]}>
+                  <Lock size={20} color={focusedField === "password" ? colors.primary : colors.textDim} style={styles.inputIcon} />
+                  <TextInput
+                    placeholder="Contraseña"
+                    placeholderTextColor={colors.textDim}
+                    style={[styles.input, { color: colors.text }]}
+                    secureTextEntry={!showPassword}
+                    value={password}
+                    onChangeText={setPassword}
+                    onFocus={() => setFocusedField("password")}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <Pressable onPress={() => setShowPassword((v) => !v)} style={styles.eyeBtn} hitSlop={8}>
+                    {showPassword 
+                      ? <EyeOff size={20} color={colors.textDim} />
+                      : <Eye size={20} color={colors.textDim} />
+                    }
+                  </Pressable>
+                </View>
+              </View>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
 
-          <Pressable
-            style={[styles.button, (!canSubmit || submitting) && styles.buttonDisabled]}
-            onPress={handleLogin}
-            disabled={!canSubmit || submitting}
-          >
-            {submitting ? <ActivityIndicator color={appColors.text} /> : <Text style={styles.buttonText}>Entrar</Text>}
-          </Pressable>
-        </View>
-      </View>
-    </SafeAreaView>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.buttonWrapper,
+                  (!canSubmit || submitting) && styles.buttonDisabled,
+                  pressed && canSubmit && styles.buttonPressed,
+                ]}
+                onPress={handleLogin}
+                disabled={!canSubmit || submitting}
+              >
+                <LinearGradient
+                  colors={[colors.primary, colors.secondary]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.buttonGradient}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.buttonText}>Iniciar Sesión</Text>
+                  )}
+                </LinearGradient>
+              </Pressable>
+
+              <Pressable style={styles.forgotBtn}>
+                <Text style={[styles.forgotText, { color: colors.textDim }]}>¿Olvidaste tu contraseña?</Text>
+              </Pressable>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  baseContainer: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: appColors.bg,
   },
-  container: {
+  keyboardView: {
     flex: 1,
+  },
+  content: {
+    flex: 1,
+    paddingHorizontal: appSpacing.xl,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    gap: 14,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: appSpacing.xxl,
+  },
+  logoBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: appSpacing.lg,
+    ...appShadows.glow,
   },
   title: {
-    color: appColors.text,
-    fontSize: 30,
-    fontWeight: "800",
-    letterSpacing: 0.5,
+    fontSize: 42,
+    fontWeight: "900",
+    letterSpacing: 2,
   },
   subtitle: {
-    color: appColors.textMuted,
-    fontSize: 14,
-    lineHeight: 21,
-    marginBottom: 8,
+    fontSize: 16,
+    fontWeight: "500",
+    marginTop: appSpacing.xs,
   },
-  card: {
-    backgroundColor: appColors.card,
+  form: {
+    gap: appSpacing.md,
+  },
+  inputContainer: {
+    gap: appSpacing.xs,
+  },
+  inputWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: appRadius.lg,
     borderWidth: 1,
-    borderColor: appColors.border,
-    borderRadius: 18,
-    padding: 16,
-    gap: 8,
+    paddingHorizontal: appSpacing.md,
+    height: 56,
   },
-  label: {
-    color: appColors.text,
-    fontSize: 13,
-    fontWeight: "700",
+  inputIcon: {
+    marginRight: appSpacing.sm,
   },
   input: {
-    backgroundColor: appColors.cardAlt,
-    color: appColors.text,
-    borderRadius: 10,
+    flex: 1,
+    fontSize: 16,
+    height: "100%",
+    outlineWidth: 0,
+  },
+  eyeBtn: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  errorContainer: {
+    backgroundColor: "rgba(244, 63, 94, 0.1)",
+    padding: appSpacing.md,
+    borderRadius: appRadius.md,
     borderWidth: 1,
-    borderColor: appColors.border,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
-    marginBottom: 6,
+    borderColor: "rgba(244, 63, 94, 0.2)",
   },
-  button: {
-    backgroundColor: appColors.accent,
-    borderRadius: 10,
+  errorText: {
+    color: "#F43F5E",
+    fontSize: 14,
+    textAlign: "center",
+  },
+  buttonWrapper: {
+    marginTop: appSpacing.lg,
+    borderRadius: appRadius.lg,
+    overflow: "hidden",
+    ...appShadows.soft,
+  },
+  buttonGradient: {
+    height: 56,
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 12,
-    marginTop: 8,
-  },
-  buttonDisabled: {
-    opacity: 0.55,
   },
   buttonText: {
-    color: appColors.text,
-    fontSize: 15,
+    color: "#FFF",
+    fontSize: 18,
     fontWeight: "700",
   },
-  error: {
-    color: appColors.danger,
-    fontSize: 12,
-    marginBottom: 4,
+  buttonDisabled: {
+    opacity: 0.5,
+  },
+  buttonPressed: {
+    transform: [{ scale: 0.98 }],
+  },
+  forgotBtn: {
+    alignItems: "center",
+    marginTop: appSpacing.md,
+  },
+  forgotText: {
+    fontSize: 14,
   },
 });

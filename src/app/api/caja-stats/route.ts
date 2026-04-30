@@ -100,7 +100,7 @@ export async function GET() {
     const saldoTotal = await getSaldoTotal(cajaIds);
 
     const ultimosMeses = await Promise.all(
-      buildLastMonthRanges(3).map(async ({ label, start, end }) => {
+      buildLastMonthRanges(4).map(async ({ label, start, end }) => {
         const [ingresos, gastos] = await Promise.all([
           getTotalsByType(cajaIds, "ingreso", start, end),
           getTotalsByType(cajaIds, "gasto", start, end),

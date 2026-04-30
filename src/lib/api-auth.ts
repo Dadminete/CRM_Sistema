@@ -81,8 +81,10 @@ export async function checkPermission(userId: string, requiredPermission: string
  * Extract and verify authentication from request
  */
 async function authenticate(req: NextRequest): Promise<AuthenticatedUser | null> {
-  // Get token from cookie
-  const token = req.cookies.get("auth-token")?.value;
+  // Prefer Bearer token for mobile/external clients, then fallback to cookie.
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearerToken = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : null;
+  const token = bearerToken || req.cookies.get("auth-token")?.value;
 
   if (!token) {
     return null;
