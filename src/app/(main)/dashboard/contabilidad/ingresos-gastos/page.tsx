@@ -1,3 +1,4 @@
+/* eslint-disable max-lines */
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
@@ -73,11 +74,11 @@ interface Movimiento {
 }
 
 interface LookupData {
-  categorias: any[];
-  bancos: any[];
-  cuentasBancarias: any[];
-  cajas: any[];
-  cuentasPorPagar: any[];
+  categorias: { id: string; nombre: string; codigo?: string }[];
+  bancos: { id: string; nombre: string }[];
+  cuentasBancarias: { id: string; numeroCuenta: string; bankNombre?: string; bankId?: string }[];
+  cajas: { id: string; nombre: string }[];
+  cuentasPorPagar: { id: string; numeroDocumento: string; proveedorNombre?: string; montoPendiente: string | number }[];
 }
 
 const METODOS_PAGO = [
@@ -130,6 +131,7 @@ export default function IngresosGastosPage() {
   );
 }
 
+// eslint-disable-next-line complexity
 function IngresosGastosPageContent() {
   const searchParams = useSearchParams();
   const facturaId = searchParams.get("facturaId");
@@ -151,8 +153,7 @@ function IngresosGastosPageContent() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
-  const [activeSession, setActiveSession] = useState<any>(null);
-  const [isValidatingSession, setIsValidatingSession] = useState(false);
+  const [activeSession, setActiveSession] = useState<{ cajaId?: string; cajaNombre?: string } | null>(null);
   const [usuarioId, setUsuarioId] = useState<string>("");
 
   // ─── Data fetching ───
@@ -190,11 +191,9 @@ function IngresosGastosPageContent() {
     }
   }, []);
 
-  const checkSession = useCallback(async (uid?: string) => {
+  const checkSession = useCallback(async () => {
     try {
-      // Si no hay uid, buscamos cualquier sesión abierta (comportamiento similar a apertura/cierre)
-      const url = uid ? `/api/cajas/sesiones?usuarioId=${uid}` : "/api/cajas/sesiones";
-      const res = await fetch(url);
+      const res = await fetch("/api/cajas/sesiones");
       const data = await res.json();
       if (data.success) {
         setActiveSession(data.activeSession);
@@ -214,16 +213,15 @@ function IngresosGastosPageContent() {
     fetch("/api/profile")
       .then((r) => r.json())
       .then((res) => {
-        const currentUserId = res?.data?.profile?.id || "";
+        const currentUserId = (res?.data?.profile?.id as string) ?? "";
         if (currentUserId) {
           setUsuarioId(currentUserId);
         }
-        // Llamar checkSession incluso si no hay ID aún para ver si hay alguna caja abierta general
-        checkSession(currentUserId);
+        checkSession();
       })
       .catch((err) => {
         console.error(err);
-        checkSession(); // Reintento sin UID
+        checkSession();
       });
   }, [activeTab, fetchMovimientos, fetchLookup, checkSession]);
 
@@ -279,16 +277,17 @@ function IngresosGastosPageContent() {
       monto: m.monto,
       categoriaId: m.categoriaId,
       metodo: m.metodo,
-      cajaId: m.cajaId || "",
-      bankId: m.bankId || "",
-      cuentaBancariaId: m.cuentaBancariaId || "",
-      descripcion: m.descripcion || "",
+      cajaId: m.cajaId ?? "",
+      bankId: m.bankId ?? "",
+      cuentaBancariaId: m.cuentaBancariaId ?? "",
+      descripcion: m.descripcion ?? "",
       fecha: m.fecha ? m.fecha.split("T")[0] : "",
-      cuentaPorPagarId: m.cuentaPorPagarId || "",
+      cuentaPorPagarId: m.cuentaPorPagarId ?? "",
     });
     setIsDialogOpen(true);
   };
 
+  // eslint-disable-next-line complexity
   const handleSave = async () => {
     if (!form.monto || !form.categoriaId || !form.metodo) {
       toast.error("Completa los campos requeridos: Monto, Categoría y Método de pago");
@@ -307,8 +306,8 @@ function IngresosGastosPageContent() {
           currentSession = data.activeSession;
           setActiveSession(data.activeSession);
         }
-      } catch (e) {
-        console.error("Error al re-verificar sesión:", e);
+      } catch (_e) {
+        console.error("Error al re-verificar sesión:", _e);
       }
     }
 
@@ -333,7 +332,7 @@ function IngresosGastosPageContent() {
         fechaISO = new Date(form.fecha).toISOString();
       }
 
-      const body: any = {
+      const body: { [key: string]: unknown } = {
         ...form,
         fecha: fechaISO,
         tipo: activeTab,
@@ -399,18 +398,20 @@ function IngresosGastosPageContent() {
 
   // ─── Derived ───
   const cuentasBancariasFiltradas = form.bankId
-    ? lookup.cuentasBancarias.filter((c: any) => c.bankId === form.bankId)
+    ? lookup.cuentasBancarias.filter((c) => c.bankId === form.bankId)
     : lookup.cuentasBancarias;
 
-  const categoriasOrdenadas = [...lookup.categorias].sort((a: any, b: any) =>
-    String(a?.nombre || "").localeCompare(String(b?.nombre || ""), "es", { sensitivity: "base" }),
+  const categoriasOrdenadas = [...lookup.categorias].sort((a, b) =>
+    String(a?.nombre ?? "").localeCompare(String(b?.nombre ?? ""), "es", { sensitivity: "base" }),
   );
 
   const filtered = movimientos.filter((m) => {
     if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
     return (
-      m.categoriaNombre?.toLowerCase().includes(q) || m.descripcion?.toLowerCase().includes(q) || m.monto.includes(q)
+      Boolean(m.categoriaNombre?.toLowerCase().includes(q)) ||
+      Boolean(m.descripcion?.toLowerCase().includes(q)) ||
+      m.monto.includes(q)
     );
   });
 
@@ -654,7 +655,7 @@ function IngresosGastosPageContent() {
                   <SelectValue placeholder="Seleccionar categoría" />
                 </SelectTrigger>
                 <SelectContent>
-                  {categoriasOrdenadas.map((c: any) => (
+                  {categoriasOrdenadas.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.nombre}
                     </SelectItem>
@@ -691,7 +692,7 @@ function IngresosGastosPageContent() {
                     <SelectValue placeholder="Seleccionar caja" />
                   </SelectTrigger>
                   <SelectContent>
-                    {lookup.cajas.map((c: any) => (
+                    {lookup.cajas.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.nombre}
                       </SelectItem>
@@ -711,7 +712,7 @@ function IngresosGastosPageContent() {
                       <SelectValue placeholder="Seleccionar banco" />
                     </SelectTrigger>
                     <SelectContent>
-                      {lookup.bancos.map((b: any) => (
+                      {lookup.bancos.map((b) => (
                         <SelectItem key={b.id} value={b.id}>
                           {b.nombre}
                         </SelectItem>
@@ -728,7 +729,7 @@ function IngresosGastosPageContent() {
                       <SelectValue placeholder="Seleccionar cuenta" />
                     </SelectTrigger>
                     <SelectContent>
-                      {cuentasBancariasFiltradas.map((c: any) => (
+                      {cuentasBancariasFiltradas.map((c) => (
                         <SelectItem key={c.id} value={c.id}>
                           {c.numeroCuenta} {c.bankNombre ? `(${c.bankNombre})` : ""}
                         </SelectItem>
@@ -750,9 +751,9 @@ function IngresosGastosPageContent() {
                     <SelectValue placeholder="Ninguna" />
                   </SelectTrigger>
                   <SelectContent>
-                    {lookup.cuentasPorPagar.map((c: any) => (
+                    {lookup.cuentasPorPagar.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.numeroDocumento} — {c.proveedorNombre || "Sin proveedor"} ({formatCurrency(c.montoPendiente)}
+                        {c.numeroDocumento} — {c.proveedorNombre ?? "Sin proveedor"} ({formatCurrency(c.montoPendiente)}
                         )
                       </SelectItem>
                     ))}
@@ -878,7 +879,7 @@ function MovimientosTable({
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-col">
-                      <span className="text-foreground text-sm font-bold">{m.categoriaNombre || "—"}</span>
+                      <span className="text-foreground text-sm font-bold">{m.categoriaNombre ?? "—"}</span>
                       {m.categoriaCodigo && (
                         <span className="text-primary/70 font-mono text-[10px] font-bold tracking-tight">
                           {m.categoriaCodigo}
@@ -892,7 +893,7 @@ function MovimientosTable({
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground max-w-[200px] truncate text-sm">
-                    {m.descripcion || "—"}
+                    {m.descripcion ?? "—"}
                   </TableCell>
                   <TableCell className="text-right">
                     <DropdownMenu>

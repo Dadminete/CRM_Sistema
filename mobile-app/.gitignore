@@ -1,8 +1,0 @@
-node_modules
-.expo
-.env
-.env.*
-*.log
-dist
-build
-.DS_Store

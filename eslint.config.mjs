@@ -158,6 +158,8 @@ export default [
       ],
 
       // React unnecessary import rules
+      "react/react-in-jsx-scope": "off",
+      "react/jsx-uses-react": "off",
       "react/jsx-no-useless-fragment": ["warn", { allowExpressions: true }],
 
       // React JSX Pascal Case Rule

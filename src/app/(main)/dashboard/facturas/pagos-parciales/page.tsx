@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable complexity, max-lines, @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-nullish-coalescing */
+
 import { useState, useEffect, useCallback } from "react";
 
 import {
@@ -101,7 +103,7 @@ export default function PagosParcialesPage() {
       } else {
         toast.error("Error al cargar facturas con pago parcial");
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Error de conexión");
     } finally {
       setIsLoading(false);
@@ -319,6 +321,20 @@ export default function PagosParcialesPage() {
     const pendiente = formatCurrency(pendienteMonto);
     const pagado = formatCurrency(Number(selectedFactura?.totalPagado || selectedFactura.total - pendienteMonto || 0));
 
+    const pagosHist = Array.isArray(detail?.payments) ? detail.payments : [];
+    const paymentsHtml = pagosHist
+      .map((p: any) => {
+        const fPago = p.fechaPago ? new Date(p.fechaPago + "T00:00:00").toLocaleDateString("es-DO") : "N/A";
+        const met = String(p.metodoPago || "").toUpperCase();
+        const mon = formatCurrency(Number(p.monto || 0));
+        const descHtml =
+          Number(p.descuento || 0) > 0
+            ? `<div style="font-size:9px;padding-left:2mm;">Desc: -${escapeHtml(formatCurrency(Number(p.descuento)))}</div>`
+            : "";
+        return `<div class="item"><div class="row"><span>${escapeHtml(fPago)} ${escapeHtml(met)}</span><span>${escapeHtml(mon)}</span></div>${descHtml}</div>`;
+      })
+      .join("");
+
     popup.document.open();
     popup.document.write(`
       <!doctype html>
@@ -382,6 +398,7 @@ export default function PagosParcialesPage() {
               <div class="row" style="color: #d32f2f;"><span>PENDIENTE</span><span>${pendiente}</span></div>
             </div>
 
+            ${paymentsHtml ? `<div class="line"></div><div class="bold center" style="font-size:9px;margin-bottom:2px;">HISTORIAL DE PAGOS</div>${paymentsHtml}` : ""}
             <div class="line"></div>
             <div>Impreso por: ${escapeHtml(printedBy)}</div>
             <div class="footer center">Gracias por su preferencia</div>

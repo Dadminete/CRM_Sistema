@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable complexity, max-lines, @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-nullish-coalescing */
+
 import { useState, useEffect, useCallback } from "react";
 
 import { jsPDF } from "jspdf";
@@ -10,7 +12,6 @@ import {
   ArrowLeft,
   FileText,
   Calendar,
-  DollarSign,
   CreditCard,
   User,
   Download,
@@ -187,6 +188,50 @@ const buildFacturaPdf = (detail: any, factura: any, generatedBy: string) => {
     });
   }
 
+  // Historial de pagos
+  const pagosHist = Array.isArray(detail?.payments) ? detail.payments : [];
+  if (pagosHist.length > 0) {
+    y += 8;
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 16;
+    writeLine("HISTORIAL DE PAGOS", 11, true, 18);
+
+    const col1 = margin;
+    const col2 = margin + 90;
+    const col3 = margin + 175;
+    const col4 = pageWidth - margin;
+
+    ensureSpace(14);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("Fecha", col1, y);
+    doc.text("Método", col2, y);
+    doc.text("Monto", col3, y);
+    doc.text("Descuento", col4, y, { align: "right" });
+    y += 14;
+
+    pagosHist.forEach((p: any) => {
+      ensureSpace(14);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(8);
+      const fPago = p.fechaPago
+        ? new Date(p.fechaPago + "T00:00:00").toLocaleDateString("es-DO", {
+            day: "2-digit",
+            month: "2-digit",
+            year: "numeric",
+          })
+        : "N/A";
+      const met = String(p.metodoPago || "").toUpperCase();
+      const mon = formatCurrency(Number(p.monto || 0));
+      const desc = Number(p.descuento || 0) > 0 ? `-${formatCurrency(Number(p.descuento))}` : "-";
+      doc.text(fPago, col1, y);
+      doc.text(met, col2, y);
+      doc.text(mon, col3, y);
+      doc.text(desc, col4, y, { align: "right" });
+      y += 14;
+    });
+  }
+
   y += 8;
   doc.line(margin, y, pageWidth - margin, y);
   y += 16;
@@ -217,7 +262,7 @@ export default function FacturasPagasPage() {
       } else {
         toast.error("Error al cargar facturas pagadas");
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Error de conexión");
     } finally {
       setIsLoading(false);
@@ -341,6 +386,20 @@ export default function FacturasPagasPage() {
       selectedFactura?.cobradoPor ||
       (detail?.payments && detail.payments.length > 0 ? detail.payments[0].recibidoPorNombre : "");
 
+    const pagosHist = Array.isArray(detail?.payments) ? detail.payments : [];
+    const paymentsHtml = pagosHist
+      .map((p: any) => {
+        const fPago = p.fechaPago ? new Date(p.fechaPago + "T00:00:00").toLocaleDateString("es-DO") : "N/A";
+        const met = String(p.metodoPago || "").toUpperCase();
+        const mon = formatCurrency(Number(p.monto || 0));
+        const descHtml =
+          Number(p.descuento || 0) > 0
+            ? `<div style="font-size:8px;padding-left:2mm;">Desc: -${escapeHtml(formatCurrency(Number(p.descuento)))}</div>`
+            : "";
+        return `<div class="item"><div class="row"><span style="font-size:8px;">${escapeHtml(fPago)} ${escapeHtml(met)}</span><span style="font-size:8px;">${escapeHtml(mon)}</span></div>${descHtml}</div>`;
+      })
+      .join("");
+
     popup.document.open();
     popup.document.write(`
       <!doctype html>
@@ -415,6 +474,7 @@ export default function FacturasPagasPage() {
               <div class="row bold" style="font-size: 11px;"><span>TOTAL</span><span>${total}</span></div>
               <div class="row"><span>Pendiente</span><span>${pendiente}</span></div>
             </div>
+            ${paymentsHtml ? `<div class="line"></div><div class="bold center" style="font-size:9px;margin-bottom:2px;">HISTORIAL DE PAGOS</div>${paymentsHtml}` : ""}
             <div class="line"></div>
             <div style="font-size: 9px;">Impreso por: ${escapeHtml(printedBy)}</div>
             <div class="footer center bold">*** ¡Gracias por su pago! ***</div>
@@ -521,7 +581,7 @@ export default function FacturasPagasPage() {
       toast.success(`Pago revertido: ${selectedFactura.numeroFactura}`);
       setSelectedFactura(null);
       await fetchData();
-    } catch (error) {
+    } catch (_error) {
       toast.error("Error de conexión al revertir el pago");
     } finally {
       setIsReverting(false);

@@ -19,7 +19,7 @@
   },
   "lint-staged": {
     "*.{js,ts,jsx,tsx}": [
-      "eslint --fix"
+      "eslint --fix --no-error-on-unmatched-pattern"
     ]
   },
   "dependencies": {

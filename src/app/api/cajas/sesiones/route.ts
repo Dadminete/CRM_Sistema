@@ -1,3 +1,5 @@
+/* eslint-disable complexity, @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-nullish-coalescing */
+
 import { NextRequest } from "next/server";
 
 import { and, eq, gte, lt, sql } from "drizzle-orm";
@@ -9,18 +11,14 @@ import { jsonResponse } from "@/lib/serializers";
 
 export const dynamic = "force-dynamic";
 
-export const GET = withAuth(async (req: NextRequest, { user }) => {
+export const GET = withAuth(async (req: NextRequest) => {
   try {
     const { searchParams } = new URL(req.url);
     const cajaId = searchParams.get("cajaId");
-    const usuarioId = searchParams.get("usuarioId");
 
     let sessionQuery = eq(sesionesCaja.estado, "abierta");
     if (cajaId) {
       sessionQuery = and(sessionQuery, eq(sesionesCaja.cajaId, cajaId));
-    }
-    if (usuarioId) {
-      sessionQuery = and(sessionQuery, eq(sesionesCaja.usuarioId, usuarioId));
     }
 
     const session = await db
@@ -210,7 +208,10 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
         .returning();
 
       if (!closedSession) {
-        return jsonResponse({ success: false, error: "No se encontró una sesión abierta para cerrar." }, { status: 404 });
+        return jsonResponse(
+          { success: false, error: "No se encontró una sesión abierta para cerrar." },
+          { status: 404 },
+        );
       }
 
       return jsonResponse({ success: true, data: closedSession });

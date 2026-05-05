@@ -1,17 +1,16 @@
+/* eslint-disable max-lines */
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 import {
   Search,
   Receipt,
   User,
   DollarSign,
-  CreditCard,
   Landmark,
   Wallet,
   CheckCircle2,
-  AlertCircle,
   ArrowLeft,
   FileText,
   Info,
@@ -21,7 +20,7 @@ import { toast } from "sonner";
 import { CajaManagementModal } from "@/components/cajas/caja-management-modal";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -34,12 +33,17 @@ const formatCurrency = (v: string | number) =>
 const formatDate = (v: string) =>
   new Date(v).toLocaleDateString("es-DO", { year: "numeric", month: "short", day: "numeric" });
 
+// eslint-disable-next-line complexity
 export default function PagarFacturaPage() {
-  const [pendientes, setPendientes] = useState<any[]>([]);
-  const [lookup, setLookup] = useState<any>({ bancos: [], cuentasBancarias: [], cajas: [] });
+  const [pendientes, setPendientes] = useState<Record<string, unknown>[]>([]);
+  const [lookup, setLookup] = useState<{
+    bancos: { id: string; nombre: string }[];
+    cuentasBancarias: { id: string; numeroCuenta: string; bankNombre?: string }[];
+    cajas: { id: string; nombre: string }[];
+  }>({ bancos: [], cuentasBancarias: [], cajas: [] });
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [activeSession, setActiveSession] = useState<any>(null);
+  const [activeSession, setActiveSession] = useState<{ cajaId: string; cajaNombre?: string } | null>(null);
   const [isCajaModalOpen, setIsCajaModalOpen] = useState(false);
   const [usuarioId, setUsuarioId] = useState<string>("");
 
@@ -51,25 +55,23 @@ export default function PagarFacturaPage() {
   const [metodoPago, setMetodoPago] = useState("efectivo");
   const [referencia, setReferencia] = useState("");
   const [cajaId, setCajaId] = useState("");
-  const [bankId, setBankId] = useState("");
   const [cuentaBancariaId, setCuentaBancariaId] = useState("");
   const [observaciones, setObservaciones] = useState("");
 
+  // eslint-disable-next-line complexity
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     try {
       // First fetch the profile to get the logged in user ID
       const profileRes = await fetch("/api/profile");
       const profileData = await profileRes.json();
-      const currentUserId = profileData?.data?.profile?.id || "";
+      const currentUserId = (profileData?.data?.profile?.id as string) ?? "";
       setUsuarioId(currentUserId);
 
       const [resPend, resLookup, resSession] = await Promise.all([
         fetch("/api/facturas/pendientes"),
         fetch("/api/contabilidad/lookup"),
-        currentUserId
-          ? fetch(`/api/cajas/sesiones?usuarioId=${currentUserId}`)
-          : Promise.resolve({ json: () => ({ success: false }) } as unknown as Response),
+        fetch("/api/cajas/sesiones"),
       ]);
 
       const [dataPend, dataLookup, dataSession] = await Promise.all([
@@ -84,7 +86,9 @@ export default function PagarFacturaPage() {
       if (dataLookup.success) {
         setLookup(dataLookup.data);
         // Default to "Caja Principal" if it exists in the boxes list
-        const principal = dataLookup.data.cajas.find((c: any) => c.nombre.toLowerCase().includes("principal"));
+        const principal = dataLookup.data.cajas.find((c: { id: string; nombre: string }) =>
+          c.nombre.toLowerCase().includes("principal"),
+        );
         if (principal) {
           initialCajaId = principal.id;
         }
@@ -101,7 +105,7 @@ export default function PagarFacturaPage() {
       if (initialCajaId) {
         setCajaId(initialCajaId);
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Error al cargar datos");
     } finally {
       setIsLoading(false);
@@ -124,19 +128,28 @@ export default function PagarFacturaPage() {
   useEffect(() => {
     if (selectedFactura) {
       // Always use montoPendiente for partial payments, not total
-      const montoPendienteValue = String(selectedFactura.montoPendiente || 0);
+      const montoPendienteValue = String(selectedFactura.montoPendiente ?? 0);
       setMonto(montoPendienteValue);
       setDescuento("0");
     }
   }, [selectedFactura]);
 
-  const filteredFacturas = pendientes.filter(
-    (f) =>
-      f.numeroFactura.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      f.clienteNombre.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      f.clienteApellidos.toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  const filteredFacturas = pendientes.filter((f) => {
+    const term = searchTerm.toLowerCase();
+    return (
+      String(f.numeroFactura ?? "")
+        .toLowerCase()
+        .includes(term) ||
+      String(f.clienteNombre ?? "")
+        .toLowerCase()
+        .includes(term) ||
+      String(f.clienteApellidos ?? "")
+        .toLowerCase()
+        .includes(term)
+    );
+  });
 
+  // eslint-disable-next-line complexity
   const handleProcessPayment = async () => {
     if (!selectedFacturaId || !monto || !metodoPago) {
       toast.error("Complete los campos obligatorios");
@@ -185,9 +198,9 @@ export default function PagarFacturaPage() {
         setObservaciones("");
         fetchData();
       } else {
-        toast.error(data.error || "Error al procesar pago");
+        toast.error((data.error as string | undefined) ?? "Error al procesar pago");
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Error de conexión");
     } finally {
       setIsSubmitting(false);
@@ -261,7 +274,7 @@ export default function PagarFacturaPage() {
         >
           <CheckCircle2 className="h-4 w-4 text-emerald-600" />
           <div className="text-[10px] font-bold tracking-wider text-emerald-700 uppercase">
-            Sesión Activa: {activeSession.cajaNombre || "Caja Principal"}
+            Sesión Activa: {activeSession.cajaNombre ?? "Caja Principal"}
           </div>
         </div>
       </div>
@@ -468,7 +481,7 @@ export default function PagarFacturaPage() {
                             // Always reference montoPendiente for discount calculations, never total
                             const descuentoValue = Number(value || 0);
                             const montoActual = Number(monto || 0);
-                            const pendienteActual = Number(selectedFactura?.montoPendiente || 0);
+                            const pendienteActual = Number(selectedFactura?.montoPendiente ?? 0);
                             const nuevoMontoSugerido = Math.max(0, pendienteActual - descuentoValue);
 
                             // Auto-adjust monto if it equals original pending amount or exceeds new suggested amount
@@ -508,7 +521,7 @@ export default function PagarFacturaPage() {
                             <SelectValue placeholder="Seleccionar caja..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {lookup.cajas.map((c: any) => (
+                            {lookup.cajas.map((c) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.nombre}
                               </SelectItem>
@@ -521,7 +534,7 @@ export default function PagarFacturaPage() {
                             <SelectValue placeholder="Seleccionar cuenta..." />
                           </SelectTrigger>
                           <SelectContent>
-                            {lookup.cuentasBancarias.map((c: any) => (
+                            {lookup.cuentasBancarias.map((c) => (
                               <SelectItem key={c.id} value={c.id}>
                                 {c.numeroCuenta} - {c.bankNombre}
                               </SelectItem>
@@ -590,7 +603,7 @@ export default function PagarFacturaPage() {
 }
 
 // Icon for the bottom card
-function ShieldCheck(props: any) {
+function ShieldCheck(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
       {...props}

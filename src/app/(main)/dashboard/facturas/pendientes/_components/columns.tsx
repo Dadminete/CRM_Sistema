@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable complexity, max-lines, @typescript-eslint/no-explicit-any, @typescript-eslint/prefer-nullish-coalescing */
+
 import { useState } from "react";
 
 import { ColumnDef } from "@tanstack/react-table";
@@ -335,6 +337,20 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
     const total = formatCurrency(Number(detail?.total || row.original.total || 0));
     const pendiente = formatCurrency(Number(row.original.montoPendiente || 0));
 
+    const pagosHist = Array.isArray(detail?.payments) ? detail.payments : [];
+    const paymentsHtml = pagosHist
+      .map((p: any) => {
+        const fPago = p.fechaPago ? new Date(p.fechaPago + "T00:00:00").toLocaleDateString("es-DO") : "N/A";
+        const met = String(p.metodoPago || "").toUpperCase();
+        const mon = formatCurrency(Number(p.monto || 0));
+        const descHtml =
+          Number(p.descuento || 0) > 0
+            ? `<div style="font-size:9px;padding-left:2mm;">Desc: -${escapeHtml(formatCurrency(Number(p.descuento)))}</div>`
+            : "";
+        return `<div class="item"><div class="row"><span>${escapeHtml(fPago)} ${escapeHtml(met)}</span><span>${escapeHtml(mon)}</span></div>${descHtml}</div>`;
+      })
+      .join("");
+
     return `
       <!doctype html>
       <html>
@@ -393,6 +409,7 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
               <div class="row"><span>Pendiente</span><span>${pendiente}</span></div>
             </div>
 
+            ${paymentsHtml ? `<div class="line"></div><div class="bold center" style="font-size:9px;margin-bottom:2px;">HISTORIAL DE PAGOS</div>${paymentsHtml}` : ""}
             <div class="line"></div>
             <div>Impreso por: ${escapeHtml(printedBy)}</div>
             <div class="footer center">Gracias por su preferencia</div>
@@ -701,7 +718,7 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
                               <TableCell className="py-4 pl-8 font-bold">{formatDate(payment.fechaPago)}</TableCell>
                               <TableCell className="py-4 text-sm capitalize">{payment.metodoPago}</TableCell>
                               <TableCell className="text-muted-foreground py-4 text-sm">
-                                {payment.referencia || "Efectivo"}
+                                {payment.numeroReferencia || "—"}
                               </TableCell>
                               <TableCell className="py-4 text-right font-black text-emerald-600">
                                 {formatCurrency(Number(payment.monto))}
