@@ -1,20 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+
 import { format } from "date-fns";
+import { SQL, and, desc, eq, gte, lte, sql } from "drizzle-orm";
 
-import { db } from "@/lib/db";
-import {
-  cajas,
-  cuentasBancarias,
-  cuentasContables,
-  movimientosContables,
-  traspasos,
-  categoriasCuentas,
-} from "@/lib/db/schema";
 import { withAuth } from "@/lib/api-auth";
-import { getTotalCount, createPaginationMeta, getPaginationOffset } from "@/lib/pagination";
+import { db } from "@/lib/db";
+import { cajas, cuentasBancarias, movimientosContables, traspasos, categoriasCuentas } from "@/lib/db/schema";
+import { getTotalCount, createPaginationMeta } from "@/lib/pagination";
 import { jsonResponse } from "@/lib/serializers";
-
 
 type TransferBody = {
   monto: number;
@@ -28,6 +21,39 @@ type TransferBody = {
 
 function badRequest(message: string) {
   return NextResponse.json({ success: false, error: message }, { status: 400 });
+}
+
+function normalizeTransferTimestamp(rawFecha?: string): string {
+  const now = new Date();
+
+  if (!rawFecha || !rawFecha.trim()) {
+    return now.toISOString();
+  }
+
+  const trimmed = rawFecha.trim();
+  const dateOnlyPattern = /^\d{4}-\d{2}-\d{2}$/;
+
+  // Date-only inputs come from the UI date picker; keep selected day but attach current time.
+  if (dateOnlyPattern.test(trimmed)) {
+    const [year, month, day] = trimmed.split("-").map(Number);
+    const localDateTime = new Date(
+      year,
+      month - 1,
+      day,
+      now.getHours(),
+      now.getMinutes(),
+      now.getSeconds(),
+      now.getMilliseconds(),
+    );
+    return localDateTime.toISOString();
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return now.toISOString();
+  }
+
+  return parsed.toISOString();
 }
 
 async function getTraspasoCategoryId(tx = db) {
@@ -59,7 +85,7 @@ async function generateNumeroTraspaso(tx = db) {
   const last = await tx.execute(
     sql`SELECT numero_traspaso FROM traspasos WHERE numero_traspaso LIKE ${prefix + "%"} ORDER BY numero_traspaso DESC LIMIT 1`,
   );
-  const lastNum = (last.rows?.[0] as any)?.numero_traspaso as string | undefined;
+  const lastNum = last.rows?.[0]?.numero_traspaso as string | undefined;
   const seq = lastNum ? parseInt(lastNum.slice(-5), 10) + 1 : 1;
   return `${prefix}${seq.toString().padStart(5, "0")}`;
 }
@@ -67,13 +93,13 @@ async function generateNumeroTraspaso(tx = db) {
 export const GET = withAuth(async (request: NextRequest) => {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10), 200);
-    const pageParam = parseInt(searchParams.get("page") || "1", 10);
+    const limit = Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 200);
+    const pageParam = parseInt(searchParams.get("page") ?? "1", 10);
     const offset = searchParams.get("offset") ? parseInt(searchParams.get("offset")!, 10) : (pageParam - 1) * limit;
     const from = searchParams.get("from");
     const to = searchParams.get("to");
 
-    const filters = [] as any[];
+    const filters: SQL[] = [];
     if (from) filters.push(gte(traspasos.fechaTraspaso, from));
     if (to) filters.push(lte(traspasos.fechaTraspaso, to));
 
@@ -106,30 +132,35 @@ export const GET = withAuth(async (request: NextRequest) => {
       data: rows,
       pagination: createPaginationMeta(page, limit, total),
     });
-
-  } catch (error: any) {
+  } catch (error) {
     console.error("GET /api/traspasos error", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
 });
 
+// eslint-disable-next-line complexity
 export const POST = withAuth(async (request: NextRequest, { user }) => {
   try {
     const body = (await request.json()) as TransferBody;
     const { monto, concepto, origenTipo, origenId, destinoTipo, destinoId } = body;
-    const fechaTraspaso = body.fecha || new Date().toISOString();
+    const fechaTraspaso = normalizeTransferTimestamp(body.fecha);
 
     if (!monto || Number(monto) <= 0) return badRequest("El monto debe ser mayor a 0.");
     if (!concepto || !concepto.trim()) return badRequest("El concepto es requerido.");
     const autorizadoPorId = user.id;
     if (!origenId || !destinoId) return badRequest("Debes indicar origen y destino.");
-    if (origenTipo === destinoTipo && origenId === destinoId) return badRequest("Origen y destino no pueden ser iguales.");
+    if (origenTipo === destinoTipo && origenId === destinoId)
+      return badRequest("Origen y destino no pueden ser iguales.");
 
     const categoriaId = await getTraspasoCategoryId();
     const numero = await generateNumeroTraspaso();
 
     console.log(`Iniciando traspaso ${numero}: $${monto} de ${origenTipo}:${origenId} a ${destinoTipo}:${destinoId}`);
 
+    // eslint-disable-next-line complexity
     const result = await db.transaction(async (tx) => {
       let origenCuentaContableId: string | null = null;
       let destinoCuentaContableId: string | null = null;
@@ -213,7 +244,9 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
 
       // Ajuste de saldos (usando cast decimal para mayor seguridad con numeric)
       if (origenTipo === "caja") {
-        await tx.execute(sql`UPDATE cajas SET saldo_actual = (saldo_actual::numeric - ${monto}::numeric)::numeric WHERE id = ${origenId}`);
+        await tx.execute(
+          sql`UPDATE cajas SET saldo_actual = (saldo_actual::numeric - ${monto}::numeric)::numeric WHERE id = ${origenId}`,
+        );
       } else if (origenCuentaContableId) {
         await tx.execute(
           sql`UPDATE cuentas_contables SET saldo_actual = (saldo_actual::numeric - ${monto}::numeric)::numeric WHERE id = ${origenCuentaContableId}`,
@@ -221,7 +254,9 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
       }
 
       if (destinoTipo === "caja") {
-        await tx.execute(sql`UPDATE cajas SET saldo_actual = (saldo_actual::numeric + ${monto}::numeric)::numeric WHERE id = ${destinoId}`);
+        await tx.execute(
+          sql`UPDATE cajas SET saldo_actual = (saldo_actual::numeric + ${monto}::numeric)::numeric WHERE id = ${destinoId}`,
+        );
       } else if (destinoCuentaContableId) {
         await tx.execute(
           sql`UPDATE cuentas_contables SET saldo_actual = (saldo_actual::numeric + ${monto}::numeric)::numeric WHERE id = ${destinoCuentaContableId}`,
@@ -233,8 +268,11 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
     });
 
     return jsonResponse({ success: true, data: result });
-  } catch (error: any) {
+  } catch (error) {
     console.error("POST /api/traspasos error", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
 });

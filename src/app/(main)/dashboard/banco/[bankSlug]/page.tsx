@@ -1,14 +1,14 @@
 import { lazy, Suspense } from "react";
+
 import { CardLoader } from "@/components/ui/loaders";
+
+import { ExpenseSummaryClient } from "./_components/expense-summary-client";
 
 const AccountOverview = lazy(() =>
   import("./_components/account-overview").then((mod) => ({ default: mod.AccountOverview })),
 );
 const CurrencyExchange = lazy(() =>
   import("../../finance/_components/currency-exchange").then((mod) => ({ default: mod.CurrencyExchange })),
-);
-const ExpenseSummary = lazy(() =>
-  import("../../finance/_components/expense-summary").then((mod) => ({ default: mod.ExpenseSummary })),
 );
 const FinancialOverview = lazy(() =>
   import("./_components/financial-overview").then((mod) => ({ default: mod.FinancialOverview })),
@@ -32,9 +32,7 @@ export default async function Page({ params }: { params: Promise<{ bankSlug: str
           </Suspense>
         </div>
         <div className="grid flex-1 grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs md:grid-cols-2">
-          <Suspense fallback={<CardLoader />}>
-            <ExpenseSummary />
-          </Suspense>
+          <ExpenseSummaryClient bankSlug={bankSlug} />
           <Suspense fallback={<CardLoader />}>
             <CurrencyExchange />
           </Suspense>
