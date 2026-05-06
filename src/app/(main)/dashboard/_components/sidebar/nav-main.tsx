@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -13,6 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Icon } from "@/components/ui/icon";
 import {
   SidebarGroup,
   SidebarGroupContent,
@@ -26,7 +28,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { type NavGroup, type NavMainItem } from "@/navigation/sidebar/sidebar-items";
-import { Icon } from "@/components/ui/icon";
 
 interface NavMainProps {
   readonly items: readonly NavGroup[];
@@ -41,76 +42,71 @@ const NavItemExpanded = ({
   isActive,
   isOpen,
   onOpenChange,
+  pathname,
 }: {
   item: NavMainItem;
   isActive: (url: string, subItems?: NavMainItem["subItems"]) => boolean;
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
+  pathname: string;
 }) => {
+  if (!item.subItems) {
+    return (
+      <SidebarMenuItem>
+        <SidebarMenuButton asChild aria-disabled={item.comingSoon} isActive={isActive(item.url)} tooltip={item.title}>
+          <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
+            {item.icon && <Icon name={item.icon} />}
+            <span>{item.title}</span>
+            {item.comingSoon && <IsComingSoon />}
+          </Link>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  }
+
   return (
-    <Collapsible key={item.title} asChild open={isOpen} onOpenChange={onOpenChange} className="group/collapsible">
+    <Collapsible asChild open={isOpen} onOpenChange={onOpenChange} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
-          {item.subItems ? (
-            <SidebarMenuButton
-              disabled={item.comingSoon}
-              isActive={isActive(item.url, item.subItems)}
-              tooltip={item.title}
-            >
-              {item.icon && <Icon name={item.icon} />}
-              <span>{item.title}</span>
-              {item.comingSoon && <IsComingSoon />}
-              <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-            </SidebarMenuButton>
-          ) : (
-            <SidebarMenuButton
-              asChild
-              aria-disabled={item.comingSoon}
-              isActive={isActive(item.url)}
-              tooltip={item.title}
-            >
-              <Link href={item.url} target={item.newTab ? "_blank" : undefined}>
-                {item.icon && <Icon name={item.icon} />}
-                <span>{item.title}</span>
-                {item.comingSoon && <IsComingSoon />}
-              </Link>
-            </SidebarMenuButton>
-          )}
+          <SidebarMenuButton
+            disabled={item.comingSoon}
+            isActive={isActive(item.url, item.subItems)}
+            tooltip={item.title}
+          >
+            {item.icon && <Icon name={item.icon} />}
+            <span>{item.title}</span>
+            {item.comingSoon && <IsComingSoon />}
+            <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
+          </SidebarMenuButton>
         </CollapsibleTrigger>
-        {item.subItems && (
-          <CollapsibleContent>
-            <SidebarMenuSub>
-              {item.subItems.map((subItem) => (
-                <SidebarMenuSubItem key={subItem.title}>
-                  <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={pathIsMatch(subItem.url)} asChild>
-                    <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
-                      {subItem.icon && <Icon name={subItem.icon} />}
-                      <span>{subItem.title}</span>
-                      {subItem.comingSoon && <IsComingSoon />}
-                    </Link>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              ))}
-            </SidebarMenuSub>
-          </CollapsibleContent>
-        )}
+        <CollapsibleContent>
+          <SidebarMenuSub>
+            {item.subItems.map((subItem) => (
+              <SidebarMenuSubItem key={subItem.title}>
+                <SidebarMenuSubButton aria-disabled={subItem.comingSoon} isActive={pathname === subItem.url} asChild>
+                  <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
+                    {subItem.icon && <Icon name={subItem.icon} />}
+                    <span>{subItem.title}</span>
+                    {subItem.comingSoon && <IsComingSoon />}
+                  </Link>
+                </SidebarMenuSubButton>
+              </SidebarMenuSubItem>
+            ))}
+          </SidebarMenuSub>
+        </CollapsibleContent>
       </SidebarMenuItem>
     </Collapsible>
   );
 };
 
-// Helper to check if a path matches the current URL
-const pathIsMatch = (url: string) => {
-  const pathname = usePathname();
-  return pathname === url;
-};
-
 const NavItemCollapsed = ({
   item,
   isActive,
+  pathname,
 }: {
   item: NavMainItem;
   isActive: (url: string, subItems?: NavMainItem["subItems"]) => boolean;
+  pathname: string;
 }) => {
   return (
     <SidebarMenuItem key={item.title}>
@@ -134,7 +130,7 @@ const NavItemCollapsed = ({
                 asChild
                 className="focus-visible:ring-0"
                 aria-disabled={subItem.comingSoon}
-                isActive={pathIsMatch(subItem.url)}
+                isActive={pathname === subItem.url}
               >
                 <Link href={subItem.url} target={subItem.newTab ? "_blank" : undefined}>
                   {subItem.icon && <Icon name={subItem.icon} className="[&>svg]:text-sidebar-foreground" />}
@@ -167,7 +163,7 @@ export function NavMain({ items }: NavMainProps) {
 
   // Find which item should be open initially based on the path
   const initialOpenItem =
-    items.flatMap((group) => group.items).find((item) => isSubmenuOpen(item.subItems))?.title || null;
+    items.flatMap((group) => group.items).find((item) => isSubmenuOpen(item.subItems))?.title ?? null;
 
   const [openTitle, setOpenTitle] = React.useState<string | null>(initialOpenItem);
   const [mounted, setMounted] = React.useState(false);
@@ -195,9 +191,7 @@ export function NavMain({ items }: NavMainProps) {
                 const isActive = isItemActive(item.url, item.subItems);
                 const isOpen = openTitle === item.title;
 
-                // Avoid hydration mismatch by waiting for mount to use client-only state/isMobile logic
                 if (mounted && state === "collapsed" && !isMobile) {
-                  // If no subItems, just render the button as a link
                   if (!item.subItems) {
                     return (
                       <SidebarMenuItem key={item.title}>
@@ -215,10 +209,9 @@ export function NavMain({ items }: NavMainProps) {
                       </SidebarMenuItem>
                     );
                   }
-                  // Otherwise, render the dropdown as before
-                  return <NavItemCollapsed key={item.title} item={item} isActive={isItemActive} />;
+                  return <NavItemCollapsed key={item.title} item={item} isActive={isItemActive} pathname={path} />;
                 }
-                // Expanded view (matches server render)
+
                 return (
                   <NavItemExpanded
                     key={item.title}
@@ -226,6 +219,7 @@ export function NavMain({ items }: NavMainProps) {
                     isActive={isItemActive}
                     isOpen={isOpen}
                     onOpenChange={(open) => setOpenTitle(open ? item.title : null)}
+                    pathname={path}
                   />
                 );
               })}
