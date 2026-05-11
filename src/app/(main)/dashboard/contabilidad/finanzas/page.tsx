@@ -9,10 +9,10 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { subscribeFinanzasUpdates } from "@/lib/finanzas-sync";
 
 type InsightItem = {
@@ -127,38 +127,41 @@ export default function FinanzasPage() {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<FinanceApiResponse["data"] | null>(null);
 
-  const fetchFinance = useCallback(async (options?: { silent?: boolean }) => {
-    const silent = options?.silent ?? false;
-    if (!silent) {
-      setLoading(true);
-    }
+  const fetchFinance = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!silent) {
+        setLoading(true);
+      }
 
-    try {
-      const parsedDays = Number(days);
-      const safeDays = Number.isFinite(parsedDays) ? Math.min(Math.max(Math.floor(parsedDays), 7), 365) : 30;
-      const res = await fetch(`/api/contabilidad/finanzas?days=${safeDays}`, { cache: "no-store" });
-      const json: FinanceApiResponse = await res.json();
+      try {
+        const parsedDays = Number(days);
+        const safeDays = Number.isFinite(parsedDays) ? Math.min(Math.max(Math.floor(parsedDays), 7), 365) : 30;
+        const res = await fetch(`/api/contabilidad/finanzas?days=${safeDays}`, { cache: "no-store" });
+        const json: FinanceApiResponse = await res.json();
 
-      if (!json.success || !json.data) {
+        if (!json.success || !json.data) {
+          if (!silent) {
+            toast.error(json.error ?? "No se pudo cargar el analisis financiero");
+            setData(null);
+          }
+          return;
+        }
+
+        setData(json.data);
+      } catch {
         if (!silent) {
-          toast.error(json.error ?? "No se pudo cargar el analisis financiero");
+          toast.error("Error de conexion al cargar finanzas");
           setData(null);
         }
-        return;
+      } finally {
+        if (!silent) {
+          setLoading(false);
+        }
       }
-
-      setData(json.data);
-    } catch {
-      if (!silent) {
-        toast.error("Error de conexion al cargar finanzas");
-        setData(null);
-      }
-    } finally {
-      if (!silent) {
-        setLoading(false);
-      }
-    }
-  }, [days]);
+    },
+    [days],
+  );
 
   useEffect(() => {
     fetchFinance();
@@ -202,7 +205,13 @@ export default function FinanzasPage() {
   }, [data]);
 
   const monthlyChartData = useMemo(
-    () => (data?.monthlyTrend ?? []).map((m) => ({ month: m.month, ingresos: m.ingresos, gastos: m.gastos, balance: m.balance })),
+    () =>
+      (data?.monthlyTrend ?? []).map((m) => ({
+        month: m.month,
+        ingresos: m.ingresos,
+        gastos: m.gastos,
+        balance: m.balance,
+      })),
     [data],
   );
 
@@ -214,8 +223,8 @@ export default function FinanzasPage() {
     const maxReceivablesOverdueRatio = data.rules.goals.maxReceivablesOverdueRatio;
 
     return data.monthlyTrend.map((m) => {
-      const savingsRate = m.ingresos > 0 ? ((m.balance / m.ingresos) * 100) : 0;
-      const expenseRatio = m.ingresos > 0 ? ((m.gastos / m.ingresos) * 100) : m.gastos > 0 ? 100 : 0;
+      const savingsRate = m.ingresos > 0 ? (m.balance / m.ingresos) * 100 : 0;
+      const expenseRatio = m.ingresos > 0 ? (m.gastos / m.ingresos) * 100 : m.gastos > 0 ? 100 : 0;
       const score = clampScore(
         40 +
           (savingsRate >= targetSavingsRate ? 20 : -15) +
@@ -268,7 +277,14 @@ export default function FinanzasPage() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} hide />
                 <ChartTooltip content={<ChartTooltipContent hideIndicator />} />
-                <Area type="monotone" dataKey="ingresos" stroke="var(--color-ingresos)" fill="var(--color-ingresos)" fillOpacity={0.15} strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="ingresos"
+                  stroke="var(--color-ingresos)"
+                  fill="var(--color-ingresos)"
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ChartContainer>
           </CardContent>
@@ -284,7 +300,14 @@ export default function FinanzasPage() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} hide />
                 <ChartTooltip content={<ChartTooltipContent hideIndicator />} />
-                <Area type="monotone" dataKey="gastos" stroke="var(--color-gastos)" fill="var(--color-gastos)" fillOpacity={0.15} strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="gastos"
+                  stroke="var(--color-gastos)"
+                  fill="var(--color-gastos)"
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ChartContainer>
           </CardContent>
@@ -300,7 +323,14 @@ export default function FinanzasPage() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} hide />
                 <ChartTooltip content={<ChartTooltipContent hideIndicator />} />
-                <Area type="monotone" dataKey="balance" stroke="var(--color-balance)" fill="var(--color-balance)" fillOpacity={0.15} strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="balance"
+                  stroke="var(--color-balance)"
+                  fill="var(--color-balance)"
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ChartContainer>
           </CardContent>
@@ -320,7 +350,14 @@ export default function FinanzasPage() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="month" tickLine={false} axisLine={false} hide />
                 <ChartTooltip content={<ChartTooltipContent hideIndicator />} />
-                <Area type="monotone" dataKey="score" stroke="var(--color-score)" fill="var(--color-score)" fillOpacity={0.15} strokeWidth={2} />
+                <Area
+                  type="monotone"
+                  dataKey="score"
+                  stroke="var(--color-score)"
+                  fill="var(--color-score)"
+                  fillOpacity={0.15}
+                  strokeWidth={2}
+                />
               </AreaChart>
             </ChartContainer>
           </CardContent>
@@ -399,7 +436,9 @@ export default function FinanzasPage() {
                 </div>
               ))
             ) : (
-              <p className="text-muted-foreground text-sm">{loading ? "Cargando..." : "No hay recomendaciones por ahora."}</p>
+              <p className="text-muted-foreground text-sm">
+                {loading ? "Cargando..." : "No hay recomendaciones por ahora."}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -462,7 +501,9 @@ export default function FinanzasPage() {
                 </div>
               ))
             ) : (
-              <p className="text-muted-foreground text-sm">{loading ? "Cargando..." : "Sin patrones relevantes detectados."}</p>
+              <p className="text-muted-foreground text-sm">
+                {loading ? "Cargando..." : "Sin patrones relevantes detectados."}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -489,7 +530,9 @@ export default function FinanzasPage() {
                         <TableCell>{row.categoria}</TableCell>
                         <TableCell className="text-right">{row.changePct.toFixed(2)}%</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant={row.increasing3m ? "destructive" : row.decreasing3m ? "secondary" : "outline"}>
+                          <Badge
+                            variant={row.increasing3m ? "destructive" : row.decreasing3m ? "secondary" : "outline"}
+                          >
                             {row.increasing3m ? "Sube 3M" : row.decreasing3m ? "Baja 3M" : "Mixto"}
                           </Badge>
                         </TableCell>

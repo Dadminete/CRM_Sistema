@@ -1,4 +1,3 @@
-/* eslint-disable max-lines */
 "use client";
 
 import { useState, useEffect, useCallback, Suspense } from "react";
@@ -49,6 +48,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyFinanzasDataChanged } from "@/lib/finanzas-sync";
 import { cn } from "@/lib/utils";
 
 // ─── Tipos ───
@@ -81,6 +81,13 @@ interface LookupData {
   cuentasPorPagar: { id: string; numeroDocumento: string; proveedorNombre?: string; montoPendiente: string | number }[];
 }
 
+interface GastoFijo {
+  id: string;
+  nombre: string;
+  monto: number;
+  activo: boolean;
+}
+
 const METODOS_PAGO = [
   { value: "efectivo", label: "Efectivo" },
   { value: "transferencia", label: "Transferencia" },
@@ -98,6 +105,7 @@ const EMPTY_FORM = {
   descripcion: "",
   fecha: new Date().toISOString().split("T")[0],
   cuentaPorPagarId: "",
+  pagoFijoId: "",
 };
 
 // ─── Helpers ───
@@ -131,7 +139,6 @@ export default function IngresosGastosPage() {
   );
 }
 
-// eslint-disable-next-line complexity
 function IngresosGastosPageContent() {
   const searchParams = useSearchParams();
   const facturaId = searchParams.get("facturaId");
@@ -155,6 +162,7 @@ function IngresosGastosPageContent() {
   const [form, setForm] = useState({ ...EMPTY_FORM });
   const [activeSession, setActiveSession] = useState<{ cajaId?: string; cajaNombre?: string } | null>(null);
   const [usuarioId, setUsuarioId] = useState<string>("");
+  const [gastosFijos, setGastosFijos] = useState<GastoFijo[]>([]);
 
   // ─── Data fetching ───
   const fetchMovimientos = useCallback(
@@ -203,12 +211,33 @@ function IngresosGastosPageContent() {
     }
   }, []);
 
+  const fetchGastosFijos = useCallback(async () => {
+    try {
+      const res = await fetch("/api/contabilidad/gastos-fijos", { cache: "no-store" });
+      const data = await res.json();
+      if (data?.success) {
+        const fixed = (data?.data?.fixedExpenses ?? []) as Array<{
+          id: string;
+          nombre: string;
+          monto: number;
+          activo: boolean;
+        }>;
+        setGastosFijos(fixed.filter((f) => f.activo));
+      }
+    } catch (error) {
+      console.error("Error cargando gastos fijos:", error);
+    }
+  }, []);
+
   useEffect(() => {
     setMovimientos([]);
     setTotal(0);
     setOffset(0);
     fetchMovimientos(activeTab, 0, false);
     fetchLookup(activeTab);
+    if (activeTab === "gasto") {
+      fetchGastosFijos();
+    }
 
     fetch("/api/profile")
       .then((r) => r.json())
@@ -223,7 +252,7 @@ function IngresosGastosPageContent() {
         console.error(err);
         checkSession();
       });
-  }, [activeTab, fetchMovimientos, fetchLookup, checkSession]);
+  }, [activeTab, fetchMovimientos, fetchLookup, checkSession, fetchGastosFijos]);
 
   // Pre-poblar si viene facturaId
   useEffect(() => {
@@ -283,11 +312,11 @@ function IngresosGastosPageContent() {
       descripcion: m.descripcion ?? "",
       fecha: m.fecha ? m.fecha.split("T")[0] : "",
       cuentaPorPagarId: m.cuentaPorPagarId ?? "",
+      pagoFijoId: "",
     });
     setIsDialogOpen(true);
   };
 
-  // eslint-disable-next-line complexity
   const handleSave = async () => {
     if (!form.monto || !form.categoriaId || !form.metodo) {
       toast.error("Completa los campos requeridos: Monto, Categoría y Método de pago");
@@ -349,6 +378,7 @@ function IngresosGastosPageContent() {
       const data = await res.json();
       if (data.success) {
         toast.success(editingId ? "Movimiento actualizado" : "Movimiento registrado");
+        notifyFinanzasDataChanged();
         setIsDialogOpen(false);
         // Reset to first page after saving
         setOffset(0);
@@ -368,6 +398,7 @@ function IngresosGastosPageContent() {
       const data = await res.json();
       if (data.success) {
         toast.success("Movimiento eliminado");
+        notifyFinanzasDataChanged();
         setOffset(0);
         fetchMovimientos(activeTab, 0, false);
       } else {
@@ -742,23 +773,51 @@ function IngresosGastosPageContent() {
 
             {/* Cuenta por Pagar (solo gastos) */}
             {isGasto && (
-              <div className="space-y-2">
-                <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
-                  Cuenta por Pagar (opcional)
-                </Label>
-                <Select value={form.cuentaPorPagarId} onValueChange={(v) => updateForm("cuentaPorPagarId", v)}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Ninguna" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lookup.cuentasPorPagar.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.numeroDocumento} — {c.proveedorNombre ?? "Sin proveedor"} ({formatCurrency(c.montoPendiente)}
-                        )
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
+                    Cuenta por Pagar (opcional)
+                  </Label>
+                  <Select
+                    value={form.cuentaPorPagarId || "none"}
+                    onValueChange={(v) => updateForm("cuentaPorPagarId", v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Ninguna" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Ninguna</SelectItem>
+                      {lookup.cuentasPorPagar.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.numeroDocumento} — {c.proveedorNombre ?? "Sin proveedor"} (
+                          {formatCurrency(c.montoPendiente)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
+                    Vincular a Gasto Fijo (opcional)
+                  </Label>
+                  <Select
+                    value={form.pagoFijoId || "none"}
+                    onValueChange={(v) => updateForm("pagoFijoId", v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Ninguno" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Ninguno</SelectItem>
+                      {gastosFijos.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.nombre} ({formatCurrency(g.monto)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             )}
 

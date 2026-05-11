@@ -16,7 +16,7 @@ type CajaStatsResponse = {
   success: boolean;
   data?: {
     saldoTotal: number;
-    ultimosMeses: Array<{ mes: string; ingresos: number; gastos: number }>;
+    ultimosMeses: Array<{ mes: string; ingresos: number; gastos: number; totalIngresos: number }>;
   };
 };
 
@@ -38,12 +38,16 @@ type TopClientesCumplidosDetalleResponse = {
 
 const ingresosGastosChartConfig = {
   ingresos: {
-    label: "Ingresos",
+    label: "Cajas",
     color: "var(--chart-1)",
   },
   gastos: {
     label: "Gastos",
     color: "var(--chart-2)",
+  },
+  totalIngresos: {
+    label: "Total Ingresos",
+    color: "var(--chart-3)",
   },
   label: {
     color: "var(--primary-foreground)",
@@ -67,7 +71,7 @@ export function InsightCards() {
   >([]);
 
   const [ingresosGastosData, setIngresosGastosData] = useState<
-    Array<{ name: string; ingresos: number; gastos: number }>
+    Array<{ name: string; ingresos: number; gastos: number; totalIngresos: number }>
   >([]);
 
   useEffect(() => {
@@ -84,6 +88,7 @@ export function InsightCards() {
               name: row.mes,
               ingresos: Number(row.ingresos || 0),
               gastos: Number(row.gastos || 0),
+              totalIngresos: Number(row.totalIngresos || 0),
             })),
           );
         }
@@ -175,7 +180,7 @@ export function InsightCards() {
 
   const xDomainMax = useMemo(() => {
     if (!ingresosGastosData.length) return 0;
-    return ingresosGastosData.reduce((max, row) => Math.max(max, row.ingresos, row.gastos), 0);
+    return ingresosGastosData.reduce((max, row) => Math.max(max, row.ingresos, row.gastos, row.totalIngresos), 0);
   }, [ingresosGastosData]);
 
   return (
@@ -341,9 +346,17 @@ export function InsightCards() {
                   className="fill-primary-foreground text-xs tabular-nums"
                 />
               </Bar>
-              <Bar dataKey="gastos" layout="vertical" fill="var(--color-gastos)" radius={[0, 6, 6, 0]}>
+              <Bar dataKey="gastos" layout="vertical" fill="var(--color-gastos)">
                 <LabelList
                   dataKey="gastos"
+                  position="insideRight"
+                  offset={8}
+                  className="fill-primary-foreground text-xs tabular-nums"
+                />
+              </Bar>
+              <Bar dataKey="totalIngresos" layout="vertical" fill="var(--color-totalIngresos)" radius={[0, 6, 6, 0]}>
+                <LabelList
+                  dataKey="totalIngresos"
                   position="insideRight"
                   offset={8}
                   className="fill-primary-foreground text-xs tabular-nums"

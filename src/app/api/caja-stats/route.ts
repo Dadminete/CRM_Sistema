@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { and, eq, gte, inArray, lte, or, sql, ne } from "drizzle-orm";
+import { and, eq, gte, inArray, isNull, lte, or, sql, ne } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { cajas, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
@@ -57,14 +57,24 @@ async function getSaldoTotal(cajaIds: string[]) {
   return Number(cajasSaldo[0]?.total ?? 0);
 }
 
-async function getTotalsByType(cajaIds: string[], tipo: "ingreso" | "gasto", start: Date, end: Date): Promise<number> {
+async function getTraspasoCatId(): Promise<string | null> {
   const traspasoCat = await db
     .select({ id: categoriasCuentas.id })
     .from(categoriasCuentas)
     .where(eq(categoriasCuentas.codigo, "TRASP-001"))
     .limit(1);
-  const traspasoCatId = traspasoCat[0]?.id ?? null;
+  return traspasoCat[0]?.id ?? null;
+}
 
+async function getTotalsByType(
+  cajaIds: string[],
+  tipo: "ingreso" | "gasto",
+  start: Date,
+  end: Date,
+  traspasoCatId: string | null,
+): Promise<number> {
+  // Only caja movements — exclude any row that also has a cuentaBancariaId to avoid
+  // double-counting with the unified total query.
   const result = await db
     .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
     .from(movimientosContables)
@@ -74,17 +84,42 @@ async function getTotalsByType(cajaIds: string[], tipo: "ingreso" | "gasto", sta
             eq(movimientosContables.tipo, tipo),
             ne(movimientosContables.categoriaId, traspasoCatId),
             inArray(movimientosContables.cajaId, cajaIds),
+            isNull(movimientosContables.cuentaBancariaId),
             gte(movimientosContables.fecha, start.toISOString()),
             lte(movimientosContables.fecha, end.toISOString()),
           )
         : and(
             eq(movimientosContables.tipo, tipo),
             inArray(movimientosContables.cajaId, cajaIds),
+            isNull(movimientosContables.cuentaBancariaId),
             gte(movimientosContables.fecha, start.toISOString()),
             lte(movimientosContables.fecha, end.toISOString()),
           ),
     );
 
+  return Number(result[0]?.total ?? 0);
+}
+
+// Unified total: cajas + bank accounts, each movement counted exactly once.
+// Excludes traspasos (internal transfers) from both sources.
+async function getTotalIngresosUnificado(
+  cajaIds: string[],
+  start: Date,
+  end: Date,
+  traspasoCatId: string | null,
+): Promise<number> {
+  const result = await db
+    .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
+    .from(movimientosContables)
+    .where(
+      and(
+        eq(movimientosContables.tipo, "ingreso"),
+        traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
+        or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
+        gte(movimientosContables.fecha, start.toISOString()),
+        lte(movimientosContables.fecha, end.toISOString()),
+      ),
+    );
   return Number(result[0]?.total ?? 0);
 }
 
@@ -98,15 +133,17 @@ export async function GET() {
     }
 
     const saldoTotal = await getSaldoTotal(cajaIds);
+    const traspasoCatId = await getTraspasoCatId();
 
     const ultimosMeses = await Promise.all(
       buildLastMonthRanges(4).map(async ({ label, start, end }) => {
-        const [ingresos, gastos] = await Promise.all([
-          getTotalsByType(cajaIds, "ingreso", start, end),
-          getTotalsByType(cajaIds, "gasto", start, end),
+        const [ingresos, gastos, totalIngresos] = await Promise.all([
+          getTotalsByType(cajaIds, "ingreso", start, end, traspasoCatId),
+          getTotalsByType(cajaIds, "gasto", start, end, traspasoCatId),
+          getTotalIngresosUnificado(cajaIds, start, end, traspasoCatId),
         ]);
 
-        return { mes: label, ingresos, gastos };
+        return { mes: label, ingresos, gastos, totalIngresos };
       }),
     );
 

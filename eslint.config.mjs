@@ -184,4 +184,18 @@ export default [
       "sonarjs/no-commented-code": "warn",
     },
   },
+  // Override for large page/route files that exceed 500 lines
+  {
+    files: [
+      "src/app/**/ajustes-financieros/**",
+      "src/app/**/finanzas/**",
+      "src/app/**/cuentas-por-pagar/**",
+      "src/app/**/ingresos-gastos/**",
+      "src/app/**/movimientos/**",
+    ],
+    rules: {
+      "max-lines": "off",
+      "complexity": "off",
+    },
+  },
 ];

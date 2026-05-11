@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { desc, eq, gte } from "drizzle-orm";
 
+import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
 import { db } from "@/lib/db";
 import { pagosFijos, pagosPagosFijos } from "@/lib/db/schema";
-import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
 import { jsonResponse } from "@/lib/serializers";
 
 const CACHE_KEY = "gastos-fijos";
@@ -116,9 +116,7 @@ export async function GET() {
     });
 
     const monthlySummary = monthKeys.map((monthKey) => {
-      const totalProgramado = fixedExpenses
-        .filter((f) => f.activo)
-        .reduce((acc, f) => acc + toNumber(f.monto), 0);
+      const totalProgramado = fixedExpenses.filter((f) => f.activo).reduce((acc, f) => acc + toNumber(f.monto), 0);
 
       const totalPagado = fixedExpenses.reduce((acc, f) => {
         const monthData = f.monthlyHistory.find((m) => m.month === monthKey);
@@ -180,11 +178,15 @@ export async function GET() {
 
     cacheSet(CACHE_KEY, payload, CACHE_TTL);
     return jsonResponse(payload);
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error cargando gastos fijos" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error cargando gastos fijos" },
+      { status: 500 },
+    );
   }
 }
 
+// eslint-disable-next-line complexity
 export async function POST(req: Request) {
   try {
     const body = await req.json();
@@ -216,11 +218,15 @@ export async function POST(req: Request) {
 
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, data: created });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error creando gasto fijo" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error creando gasto fijo" },
+      { status: 500 },
+    );
   }
 }
 
+// eslint-disable-next-line complexity
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
@@ -237,7 +243,9 @@ export async function PUT(req: Request) {
     if (body?.nombre !== undefined) patch.nombre = String(body.nombre).trim();
     if (body?.descripcion !== undefined) patch.descripcion = body.descripcion ? String(body.descripcion) : null;
     if (body?.monto !== undefined) patch.monto = String(Number(body.monto));
-    if (body?.diaVencimiento !== undefined) patch.diaVencimiento = Math.min(Math.max(Number(body.diaVencimiento), 1), 31);
+    if (body?.diaVencimiento !== undefined)
+      patch.diaVencimiento = Math.min(Math.max(Number(body.diaVencimiento), 1), 31);
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     if (body?.moneda !== undefined) patch.moneda = String(body.moneda || "DOP");
     if (body?.activo !== undefined) patch.activo = Boolean(body.activo);
     if (body?.observaciones !== undefined) patch.observaciones = body.observaciones ? String(body.observaciones) : null;
@@ -245,8 +253,11 @@ export async function PUT(req: Request) {
     const [updated] = await db.update(pagosFijos).set(patch).where(eq(pagosFijos.id, id)).returning();
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, data: updated });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error actualizando gasto fijo" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error actualizando gasto fijo" },
+      { status: 500 },
+    );
   }
 }
 
@@ -267,7 +278,10 @@ export async function DELETE(req: Request) {
 
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, data: updated, message: "Gasto fijo desactivado" });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error eliminando gasto fijo" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error eliminando gasto fijo" },
+      { status: 500 },
+    );
   }
 }

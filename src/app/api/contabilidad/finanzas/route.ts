@@ -1,8 +1,8 @@
 import { sql, eq } from "drizzle-orm";
 
+import { cacheGet, cacheSet } from "@/lib/api-cache";
 import { db } from "@/lib/db";
 import { categoriasCuentas, configuraciones } from "@/lib/db/schema";
-import { cacheGet, cacheSet } from "@/lib/api-cache";
 import { jsonResponse } from "@/lib/serializers";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +57,9 @@ async function loadPersistedRules() {
   try {
     const parsed = JSON.parse(existing[0].valor);
     return {
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       sourceDocument: parsed?.sourceDocument?.trim() || FINANCE_RULE_PROFILE.sourceDocument,
+      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
       version: parsed?.version?.trim() || FINANCE_RULE_PROFILE.version,
       goals: {
         targetSavingsRate: Number(parsed?.goals?.targetSavingsRate ?? FINANCE_RULE_PROFILE.goals.targetSavingsRate),
@@ -65,7 +67,9 @@ async function loadPersistedRules() {
         maxReceivablesOverdueRatio: Number(
           parsed?.goals?.maxReceivablesOverdueRatio ?? FINANCE_RULE_PROFILE.goals.maxReceivablesOverdueRatio,
         ),
-        maxDebtPressureRatio: Number(parsed?.goals?.maxDebtPressureRatio ?? FINANCE_RULE_PROFILE.goals.maxDebtPressureRatio),
+        maxDebtPressureRatio: Number(
+          parsed?.goals?.maxDebtPressureRatio ?? FINANCE_RULE_PROFILE.goals.maxDebtPressureRatio,
+        ),
       },
     };
   } catch {
@@ -87,7 +91,11 @@ export async function GET(req: Request) {
     // Cargar reglas y categoría de traspasos en paralelo (antes eran secuenciales)
     const [rules, traspasoCatRows] = await Promise.all([
       loadPersistedRules(),
-      db.select({ id: categoriasCuentas.id }).from(categoriasCuentas).where(eq(categoriasCuentas.codigo, "TRASP-001")).limit(1),
+      db
+        .select({ id: categoriasCuentas.id })
+        .from(categoriasCuentas)
+        .where(eq(categoriasCuentas.codigo, "TRASP-001"))
+        .limit(1),
     ]);
 
     const targetSavingsRate = Math.min(
@@ -170,7 +178,7 @@ export async function GET(req: Request) {
       `),
     ]);
 
-    const totalsRow = (totalsRaw.rows?.[0] ?? {}) as Record<string, unknown>;
+    const totalsRow = totalsRaw.rows?.[0] ?? {};
     const ingresos = toNumber(totalsRow.ingresos);
     const gastos = toNumber(totalsRow.gastos);
     const balance = ingresos - gastos;
@@ -189,11 +197,12 @@ export async function GET(req: Request) {
 
     const monthlyAggMap = new Map<string, { ingresos: number; gastos: number }>();
     for (const row of monthlyTrendRaw.rows ?? []) {
-      const d = new Date((row as any).month_date);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "00")}`;
+      const r = row;
+      const d = new Date(String(r.month_date));
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       monthlyAggMap.set(key, {
-        ingresos: toNumber((row as any).ingresos),
-        gastos: toNumber((row as any).gastos),
+        ingresos: toNumber(r.ingresos),
+        gastos: toNumber(r.gastos),
       });
     }
 
@@ -210,10 +219,9 @@ export async function GET(req: Request) {
 
     const lastMonth = monthlyTrend.at(-1);
     const prevMonth = monthlyTrend.at(-2);
-    const balanceTrend =
-      lastMonth && prevMonth ? toPercent(lastMonth.balance - prevMonth.balance) : 0;
+    const balanceTrend = lastMonth && prevMonth ? toPercent(lastMonth.balance - prevMonth.balance) : 0;
 
-    const topExpenseCategories = (topCategoriesRaw.rows ?? []).map((row: any) => ({
+    const topExpenseCategories = (topCategoriesRaw.rows ?? []).map((row: Record<string, unknown>) => ({
       id: String(row.id ?? ""),
       codigo: row.codigo ? String(row.codigo) : null,
       nombre: row.nombre ? String(row.nombre) : "Sin categoria",
@@ -221,7 +229,7 @@ export async function GET(req: Request) {
       percentage: gastos > 0 ? toPercent((toNumber(row.total) / gastos) * 100) : 0,
     }));
 
-    const receivableRow = (receivablesRaw.rows?.[0] ?? {}) as Record<string, unknown>;
+    const receivableRow = receivablesRaw.rows?.[0] ?? {};
     const docsAbiertos = toNumber(receivableRow.docs_abiertos);
     const docsVencidos = toNumber(receivableRow.docs_vencidos);
     const montoAbierto = toNumber(receivableRow.monto_abierto);
@@ -231,13 +239,17 @@ export async function GET(req: Request) {
 
     const monthlyCategoryMap = new Map<string, number[]>();
     for (const row of monthlyCategoryRaw.rows ?? []) {
-      const d = new Date((row as any).month_date);
+      const r = row;
+      const d = new Date(String(r.month_date));
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const category = String((row as any).categoria ?? "Sin categoria");
-      const total = toNumber((row as any).total);
+      const category = String(r.categoria ?? "Sin categoria");
+      const total = toNumber(r.total);
 
       if (!monthlyCategoryMap.has(category)) {
-        monthlyCategoryMap.set(category, Array.from({ length: monthKeys.length }, () => 0));
+        monthlyCategoryMap.set(
+          category,
+          Array.from({ length: monthKeys.length }, () => 0),
+        );
       }
 
       const idx = monthKeys.indexOf(key);
@@ -351,7 +363,8 @@ export async function GET(req: Request) {
       });
       recommendations.push({
         title: "Consolidar y priorizar deuda",
-        action: "Ordena obligaciones por costo/riesgo y define un plan mensual de pago con prioridad alta en las mas caras.",
+        action:
+          "Ordena obligaciones por costo/riesgo y define un plan mensual de pago con prioridad alta en las mas caras.",
         priority: "alta",
       });
     }
@@ -450,7 +463,8 @@ export async function GET(req: Request) {
         });
         recommendations.push({
           title: "Recuperar flujo de ingresos",
-          action: "Refuerza cobro de pendientes y activa acciones comerciales para levantar ingresos del siguiente mes.",
+          action:
+            "Refuerza cobro de pendientes y activa acciones comerciales para levantar ingresos del siguiente mes.",
           priority: "alta",
         });
       }
@@ -559,10 +573,10 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store, no-cache, must-revalidate",
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error en analisis financiero:", error);
     return jsonResponse(
-      { success: false, error: error?.message ?? "Error interno" },
+      { success: false, error: error instanceof Error ? error.message : "Error interno" },
       {
         status: 500,
         headers: {

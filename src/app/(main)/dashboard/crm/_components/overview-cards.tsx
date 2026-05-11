@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react";
 
-import { format, subMonths } from "date-fns";
-import { Wallet, BadgeDollarSign, FileText, TrendingUp, Landmark } from "lucide-react";
-import { Area, AreaChart, Line, LineChart, Bar, BarChart, XAxis } from "recharts";
+import { FileText, TrendingUp, Landmark } from "lucide-react";
+import { Area, AreaChart, Line, Bar, BarChart, XAxis } from "recharts";
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
@@ -49,6 +48,7 @@ interface BankAccountsData {
 interface InvoicesStatsData {
   totalPendiente: number;
   totalParcial: number;
+  totalAdelantado: number;
   stats: {
     fecha: string;
     ingresos: number;
@@ -248,20 +248,40 @@ function PendingInvoicesCard({ data }: { data: InvoicesStatsData | null }) {
   if (!data) return <LoadingCard title="Facturas Pendientes" />;
 
   return (
-    <Card className="overflow-hidden pb-0">
-      <CardHeader>
+    <Card className="flex flex-col overflow-hidden pb-0">
+      <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
-          <div className="w-fit rounded-lg bg-blue-500/10 p-2">
-            <FileText className="size-5 text-blue-500" />
-          </div>
-          <div className="w-fit rounded-md bg-yellow-500/10 px-2 py-1 text-[10px] font-medium text-yellow-600">
-            Parciales: {formatCurrency(data.totalParcial)}
+          <div className="flex items-center gap-2">
+            <div className="w-fit rounded-lg bg-blue-500/10 p-2">
+              <FileText className="size-5 text-blue-500" />
+            </div>
+            <CardTitle className="text-sm">Facturas Pendientes</CardTitle>
           </div>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 p-0">
+      <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-0">
+        {/* Pendientes puras — el número más grande */}
+        <div className="space-y-0.5">
+          <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Pendiente</p>
+          <p className="text-3xl font-bold tracking-tight tabular-nums">{formatCurrency(data.totalPendiente)}</p>
+        </div>
+        <div className="bg-border h-px" />
+        {/* Parciales */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Parciales</p>
+            <p className="text-lg font-semibold text-yellow-600 tabular-nums">{formatCurrency(data.totalParcial)}</p>
+          </div>
+          {/* Adelantados */}
+          <div className="space-y-0.5 text-right">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Adelantados</p>
+            <p className="text-lg font-semibold text-purple-600 tabular-nums">{formatCurrency(data.totalAdelantado)}</p>
+          </div>
+        </div>
+      </CardContent>
+      <CardContent className="mt-auto flex-1 p-0">
         <ChartContainer
-          className="size-full min-h-24"
+          className="size-full min-h-20"
           config={{ ingresos: { label: "Ingresos", color: "var(--chart-1)" } }}
         >
           <AreaChart data={data.stats} margin={{ left: 0, right: 0, top: 5 }}>
@@ -280,10 +300,6 @@ function PendingInvoicesCard({ data }: { data: InvoicesStatsData | null }) {
           </AreaChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="flex flex-col items-start gap-1 pb-4">
-        <CardDescription>Facturas Pendientes</CardDescription>
-        <p className="text-2xl font-medium tabular-nums">{formatCurrency(data.totalPendiente)}</p>
-      </CardFooter>
     </Card>
   );
 }
@@ -314,9 +330,9 @@ function NetMonthlyIncomeCard({ data }: { data: NetIncomeData | null }) {
 
 // --- Main Container ---
 
+// eslint-disable-next-line complexity
 export function OverviewCards() {
   const [data, setData] = useState<DashboardOverviewData | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function fetchData() {
@@ -331,8 +347,6 @@ export function OverviewCards() {
         }
       } catch (error) {
         console.error("Error fetching dashboard overview:", error);
-      } finally {
-        setLoading(false);
       }
     }
 

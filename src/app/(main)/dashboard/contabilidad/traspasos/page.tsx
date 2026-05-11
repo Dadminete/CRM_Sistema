@@ -24,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { notifyFinanzasDataChanged } from "@/lib/finanzas-sync";
 import { formatCurrency } from "@/lib/utils";
 
 type CuentaCaja = { id: string; nombre: string; saldoActual: string };
@@ -180,6 +181,7 @@ export default function TraspasosPage() {
       const data = await res.json();
       if (data.success) {
         toast.success("Traspaso creado");
+        notifyFinanzasDataChanged();
         setForm((prev) => ({ ...prev, monto: "", concepto: "" }));
         await loadData();
       } else {
@@ -226,6 +228,7 @@ export default function TraspasosPage() {
       const data = await res.json();
       if (data.success) {
         toast.success("Traspaso actualizado");
+        notifyFinanzasDataChanged();
         setIsEditOpen(false);
         await loadData();
       } else {

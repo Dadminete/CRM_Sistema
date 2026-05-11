@@ -62,7 +62,13 @@ type Account = {
   numeroCuotas: number | null;
   tipo: string;
   monthlyHistory: MonthHistory[];
-  pagosRecientes: Array<{ id: string; monto: number; fechaPago: string; metodoPago: string; numeroReferencia?: string | null }>;
+  pagosRecientes: Array<{
+    id: string;
+    monto: number;
+    fechaPago: string;
+    metodoPago: string;
+    numeroReferencia?: string | null;
+  }>;
 };
 
 type Summary = {
@@ -127,7 +133,7 @@ function fmt(n: number, moneda = "DOP") {
 }
 
 function fmtDate(dateStr: string) {
-  if (!dateStr) return "\u2014";
+  if (!dateStr) return "—";
   const d = new Date(`${dateStr}T00:00:00`);
   return d.toLocaleDateString("es-DO", { day: "2-digit", month: "short", year: "numeric" });
 }
@@ -135,37 +141,38 @@ function fmtDate(dateStr: string) {
 function getEstadoBadge(estado: Account["estado"], diasVencido: number) {
   if (estado === "pagada")
     return (
-      <Badge className="bg-green-100 text-green-800 border border-green-300">
-        <CheckCircle2 className="h-3 w-3 mr-1" />
+      <Badge className="border border-green-300 bg-green-100 text-green-800">
+        <CheckCircle2 className="mr-1 h-3 w-3" />
         Pagada
       </Badge>
     );
   if (diasVencido > 0)
     return (
-      <Badge className="bg-red-100 text-red-800 border border-red-300">
-        <AlertCircle className="h-3 w-3 mr-1" />
+      <Badge className="border border-red-300 bg-red-100 text-red-800">
+        <AlertCircle className="mr-1 h-3 w-3" />
         Vencida {diasVencido}d
       </Badge>
     );
   if (estado === "parcial")
     return (
-      <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300">
-        <AlertTriangle className="h-3 w-3 mr-1" />
+      <Badge className="border border-yellow-300 bg-yellow-100 text-yellow-800">
+        <AlertTriangle className="mr-1 h-3 w-3" />
         Parcial
       </Badge>
     );
   return (
-    <Badge className="bg-blue-100 text-blue-800 border border-blue-300">
-      <CreditCard className="h-3 w-3 mr-1" />
+    <Badge className="border border-blue-300 bg-blue-100 text-blue-800">
+      <CreditCard className="mr-1 h-3 w-3" />
       Pendiente
     </Badge>
   );
 }
 
 function getPriorityBadge(priority: Recommendation["priority"]) {
-  if (priority === "alta") return <Badge className="bg-red-100 text-red-800 border border-red-300 text-xs">Alta</Badge>;
-  if (priority === "media") return <Badge className="bg-yellow-100 text-yellow-800 border border-yellow-300 text-xs">Media</Badge>;
-  return <Badge className="bg-green-100 text-green-800 border border-green-300 text-xs">Baja</Badge>;
+  if (priority === "alta") return <Badge className="border border-red-300 bg-red-100 text-xs text-red-800">Alta</Badge>;
+  if (priority === "media")
+    return <Badge className="border border-yellow-300 bg-yellow-100 text-xs text-yellow-800">Media</Badge>;
+  return <Badge className="border border-green-300 bg-green-100 text-xs text-green-800">Baja</Badge>;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -210,7 +217,9 @@ export default function CuentasPorPagarPage() {
     const unsub = subscribeFinanzasUpdates(() => fetchData(true));
 
     const handleFocus = () => fetchData();
-    const handleVisible = () => { if (!document.hidden) fetchData(); };
+    const handleVisible = () => {
+      if (!document.hidden) fetchData();
+    };
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisible);
 
@@ -221,6 +230,8 @@ export default function CuentasPorPagarPage() {
       document.removeEventListener("visibilitychange", handleVisible);
     };
   }, [fetchData]);
+
+  // ─── Form helpers ───────────────────────────────────────────────────────────
 
   function openCreate() {
     setEditingId(null);
@@ -254,7 +265,13 @@ export default function CuentasPorPagarPage() {
   }
 
   async function handleSave() {
-    if (!form.numeroDocumento || !form.concepto || !form.montoOriginal || !form.fechaEmision || !form.fechaVencimiento) {
+    if (
+      !form.numeroDocumento ||
+      !form.concepto ||
+      !form.montoOriginal ||
+      !form.fechaEmision ||
+      !form.fechaVencimiento
+    ) {
       toast.error("Completa los campos requeridos");
       return;
     }
@@ -295,8 +312,8 @@ export default function CuentasPorPagarPage() {
       toast.success(editingId ? "Cuenta actualizada" : "Cuenta creada");
       setShowModal(false);
       await fetchData(true);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Error al guardar");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al guardar");
     } finally {
       setSaving(false);
     }
@@ -311,17 +328,19 @@ export default function CuentasPorPagarPage() {
       toast.success("Cuenta eliminada");
       setDeleteConfirmId(null);
       await fetchData(true);
-    } catch (err: any) {
-      toast.error(err?.message ?? "Error al eliminar");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al eliminar");
     } finally {
       setDeleting(null);
     }
   }
 
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <div className="flex flex-col items-center gap-2 text-muted-foreground">
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="text-muted-foreground flex flex-col items-center gap-2">
           <RefreshCw className="h-6 w-6 animate-spin" />
           <p className="text-sm">Cargando cuentas por pagar...</p>
         </div>
@@ -353,31 +372,33 @@ export default function CuentasPorPagarPage() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Cuentas por Pagar</h1>
-          <p className="text-muted-foreground text-sm">Gesti\u00f3n de obligaciones pendientes con proveedores</p>
+          <p className="text-muted-foreground text-sm">Gestión de obligaciones pendientes con proveedores</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => fetchData(true)}>
-            <RefreshCw className="h-4 w-4 mr-1" />
+            <RefreshCw className="mr-1 h-4 w-4" />
             Actualizar
           </Button>
           <Button size="sm" onClick={openCreate}>
-            <Plus className="h-4 w-4 mr-1" />
+            <Plus className="mr-1 h-4 w-4" />
             Nueva Cuenta
           </Button>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="text-xs">Total Original</CardDescription>
             <CardTitle className="text-xl text-blue-600">{fmt(summary.totalOriginal)}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">{summary.cantidadCuentas} cuenta(s) registrada(s)</p>
+            <p className="text-muted-foreground text-xs">{summary.cantidadCuentas} cuenta(s) registrada(s)</p>
           </CardContent>
         </Card>
 
@@ -387,7 +408,7 @@ export default function CuentasPorPagarPage() {
             <CardTitle className="text-xl text-orange-600">{fmt(summary.totalPendiente)}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {summary.totalOriginal > 0
                 ? `${((summary.totalPendiente / summary.totalOriginal) * 100).toFixed(1)}% del total`
                 : "Sin deuda"}
@@ -401,10 +422,10 @@ export default function CuentasPorPagarPage() {
             <CardTitle className="text-xl text-green-600">{fmt(summary.totalPagado)}</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-muted-foreground text-xs">
               {summary.totalOriginal > 0
                 ? `${((summary.totalPagado / summary.totalOriginal) * 100).toFixed(1)}% completado`
-                : "\u2014"}
+                : "—"}
             </p>
           </CardContent>
         </Card>
@@ -417,21 +438,22 @@ export default function CuentasPorPagarPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-xs text-muted-foreground">
-              {summary.cantidadVencidas > 0 ? "Requieren atenci\u00f3n inmediata" : "Sin atrasos"}
+            <p className="text-muted-foreground text-xs">
+              {summary.cantidadVencidas > 0 ? "Requieren atención inmediata" : "Sin atrasos"}
             </p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        {/* Monthly Payment Chart */}
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Pagos por Mes (\u00faltimos 12 meses)</CardTitle>
+            <CardTitle className="text-base">Pagos por Mes (últimos 12 meses)</CardTitle>
           </CardHeader>
           <CardContent>
             {monthlySummary && monthlySummary.length > 0 ? (
-              <div className="flex items-end gap-1 h-32">
+              <div className="flex h-32 items-end gap-1">
                 {monthlySummary.map((item) => {
                   const heightPct = (item.totalPagado / maxMonthly) * 100;
                   const [year, month] = item.month.split("-");
@@ -439,38 +461,39 @@ export default function CuentasPorPagarPage() {
                     month: "short",
                   });
                   return (
-                    <div key={item.month} className="flex flex-col items-center gap-1 flex-1 group">
+                    <div key={item.month} className="group flex flex-1 flex-col items-center gap-1">
                       <div className="relative w-full">
                         <div
-                          className="w-full bg-blue-500 rounded-sm transition-all group-hover:bg-blue-600"
+                          className="w-full rounded-sm bg-blue-500 transition-all group-hover:bg-blue-600"
                           style={{ height: `${Math.max(heightPct, item.totalPagado > 0 ? 4 : 0)}px` }}
                           title={`${item.month}: ${fmt(item.totalPagado)}`}
                         />
                       </div>
-                      <span className="text-[9px] text-muted-foreground">{label}</span>
+                      <span className="text-muted-foreground text-[9px]">{label}</span>
                     </div>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground py-8 text-center">Sin historial de pagos</p>
+              <p className="text-muted-foreground py-8 text-center text-sm">Sin historial de pagos</p>
             )}
           </CardContent>
         </Card>
 
+        {/* Recommendations */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Recomendaciones</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {recommendations.map((rec, i) => (
-              <div key={i} className="flex gap-2 p-2 rounded-md bg-muted/50">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-0.5">
+              <div key={i} className="bg-muted/50 flex gap-2 rounded-md p-2">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-0.5 flex items-center gap-2">
                     {getPriorityBadge(rec.priority)}
-                    <span className="text-xs font-medium truncate">{rec.title}</span>
+                    <span className="truncate text-xs font-medium">{rec.title}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground leading-tight">{rec.detail}</p>
+                  <p className="text-muted-foreground text-xs leading-tight">{rec.detail}</p>
                 </div>
               </div>
             ))}
@@ -478,28 +501,67 @@ export default function CuentasPorPagarPage() {
         </Card>
       </div>
 
+      {/* Accounts Table */}
       <Card>
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <CardTitle className="text-base">Listado de Cuentas</CardTitle>
-              <CardDescription>{filteredAccounts.length} de {accounts.length} cuenta(s)</CardDescription>
+              <CardDescription>
+                {filteredAccounts.length} de {accounts.length} cuenta(s)
+              </CardDescription>
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {([
-                { key: "activas", label: "Activas", count: countActivas, active: "bg-blue-600 text-white border-blue-600", inactive: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100" },
-                { key: "pendiente", label: "Pendiente", count: countPendiente, active: "bg-orange-600 text-white border-orange-600", inactive: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100" },
-                { key: "vencida", label: "Vencida", count: countVencida, active: "bg-red-600 text-white border-red-600", inactive: "bg-red-50 text-red-700 border-red-200 hover:bg-red-100" },
-                { key: "pagada", label: "Pagada", count: countPagada, active: "bg-green-600 text-white border-green-600", inactive: "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" },
-                { key: "todas", label: "Todas", count: accounts.length, active: "bg-gray-700 text-white border-gray-700", inactive: "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200" },
-              ] as const).map(({ key, label, count, active, inactive }) => (
+              {(
+                [
+                  {
+                    key: "activas",
+                    label: "Activas",
+                    count: countActivas,
+                    active: "bg-blue-600 text-white border-blue-600",
+                    inactive: "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100",
+                  },
+                  {
+                    key: "pendiente",
+                    label: "Pendiente",
+                    count: countPendiente,
+                    active: "bg-orange-600 text-white border-orange-600",
+                    inactive: "bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100",
+                  },
+                  {
+                    key: "vencida",
+                    label: "Vencida",
+                    count: countVencida,
+                    active: "bg-red-600 text-white border-red-600",
+                    inactive: "bg-red-50 text-red-700 border-red-200 hover:bg-red-100",
+                  },
+                  {
+                    key: "pagada",
+                    label: "Pagada",
+                    count: countPagada,
+                    active: "bg-green-600 text-white border-green-600",
+                    inactive: "bg-green-50 text-green-700 border-green-200 hover:bg-green-100",
+                  },
+                  {
+                    key: "todas",
+                    label: "Todas",
+                    count: accounts.length,
+                    active: "bg-gray-700 text-white border-gray-700",
+                    inactive: "bg-gray-100 text-gray-600 border-gray-200 hover:bg-gray-200",
+                  },
+                ] as const
+              ).map(({ key, label, count, active, inactive }) => (
                 <button
                   key={key}
                   onClick={() => setFilterTab(key)}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-colors ${filterTab === key ? active : inactive}`}
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${filterTab === key ? active : inactive}`}
                 >
                   {label}
-                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${filterTab === key ? "bg-white/30" : "bg-current/10"}`}>{count}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold ${filterTab === key ? "bg-white/30" : "bg-current/10"}`}
+                  >
+                    {count}
+                  </span>
                 </button>
               ))}
             </div>
@@ -507,14 +569,14 @@ export default function CuentasPorPagarPage() {
         </CardHeader>
         <CardContent className="p-0">
           {accounts.length === 0 ? (
-            <div className="py-12 text-center text-muted-foreground text-sm">
+            <div className="text-muted-foreground py-12 text-center text-sm">
               No hay cuentas por pagar registradas.{" "}
-              <button className="underline text-primary" onClick={openCreate}>
+              <button className="text-primary underline" onClick={openCreate}>
                 Crear la primera
               </button>
             </div>
           ) : filteredAccounts.length === 0 ? (
-            <div className="py-8 text-center text-muted-foreground text-sm">
+            <div className="text-muted-foreground py-8 text-center text-sm">
               No hay cuentas con el filtro seleccionado.
             </div>
           ) : (
@@ -524,7 +586,7 @@ export default function CuentasPorPagarPage() {
                   <TableHead className="w-8" />
                   <TableHead>Concepto</TableHead>
                   <TableHead>Proveedor</TableHead>
-                  <TableHead>N\u00b0 Documento</TableHead>
+                  <TableHead>N° Documento</TableHead>
                   <TableHead>Vencimiento</TableHead>
                   <TableHead className="text-right">Monto Original</TableHead>
                   <TableHead className="text-right">Pendiente</TableHead>
@@ -537,18 +599,18 @@ export default function CuentasPorPagarPage() {
                   <>
                     <TableRow
                       key={account.id}
-                      className="cursor-pointer hover:bg-muted/50"
+                      className="hover:bg-muted/50 cursor-pointer"
                       onClick={() => setExpandedId(expandedId === account.id ? null : account.id)}
                     >
                       <TableCell>
                         {expandedId === account.id ? (
-                          <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          <ChevronUp className="text-muted-foreground h-4 w-4" />
                         ) : (
-                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                          <ChevronDown className="text-muted-foreground h-4 w-4" />
                         )}
                       </TableCell>
-                      <TableCell className="font-medium max-w-[180px] truncate">{account.concepto}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{account.proveedorNombre ?? "\u2014"}</TableCell>
+                      <TableCell className="max-w-[180px] truncate font-medium">{account.concepto}</TableCell>
+                      <TableCell className="text-muted-foreground text-sm">{account.proveedorNombre ?? "—"}</TableCell>
                       <TableCell className="text-sm">{account.numeroDocumento}</TableCell>
                       <TableCell className="text-sm">{fmtDate(account.fechaVencimiento)}</TableCell>
                       <TableCell className="text-right text-sm">{fmt(account.montoOriginal, account.moneda)}</TableCell>
@@ -564,18 +626,13 @@ export default function CuentasPorPagarPage() {
                       <TableCell>{getEstadoBadge(account.estado, account.diasVencido)}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7"
-                            onClick={() => openEdit(account)}
-                          >
+                          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(account)}>
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-7 w-7 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="h-7 w-7 text-red-600 hover:bg-red-50 hover:text-red-700"
                             onClick={() => setDeleteConfirmId(account.id)}
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -584,45 +641,48 @@ export default function CuentasPorPagarPage() {
                       </TableCell>
                     </TableRow>
 
+                    {/* Expanded row: payment history */}
                     {expandedId === account.id && (
                       <TableRow key={`${account.id}-expand`} className="bg-muted/30">
                         <TableCell colSpan={9} className="p-4">
                           <div className="space-y-4">
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            {/* Account details */}
+                            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                               <div>
-                                <p className="text-xs text-muted-foreground">Tipo</p>
+                                <p className="text-muted-foreground text-xs">Tipo</p>
                                 <p className="text-sm font-medium capitalize">{account.tipo}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-muted-foreground">Tipo Documento</p>
+                                <p className="text-muted-foreground text-xs">Tipo Documento</p>
                                 <p className="text-sm font-medium capitalize">{account.tipoDocumento}</p>
                               </div>
                               <div>
-                                <p className="text-xs text-muted-foreground">Fecha Emisi\u00f3n</p>
+                                <p className="text-muted-foreground text-xs">Fecha Emisión</p>
                                 <p className="text-sm font-medium">{fmtDate(account.fechaEmision)}</p>
                               </div>
                               {account.cuotaMensual != null && (
                                 <div>
-                                  <p className="text-xs text-muted-foreground">Cuota Mensual</p>
+                                  <p className="text-muted-foreground text-xs">Cuota Mensual</p>
                                   <p className="text-sm font-medium">{fmt(account.cuotaMensual, account.moneda)}</p>
                                 </div>
                               )}
                               {account.numeroCuotas != null && (
                                 <div>
-                                  <p className="text-xs text-muted-foreground">N\u00b0 Cuotas</p>
+                                  <p className="text-muted-foreground text-xs">N° Cuotas</p>
                                   <p className="text-sm font-medium">{account.numeroCuotas}</p>
                                 </div>
                               )}
                               {account.observaciones && (
                                 <div className="col-span-2">
-                                  <p className="text-xs text-muted-foreground">Observaciones</p>
+                                  <p className="text-muted-foreground text-xs">Observaciones</p>
                                   <p className="text-sm">{account.observaciones}</p>
                                 </div>
                               )}
                             </div>
 
+                            {/* Payment progress */}
                             <div>
-                              <div className="flex justify-between text-xs mb-1">
+                              <div className="mb-1 flex justify-between text-xs">
                                 <span className="text-muted-foreground">Progreso de pago</span>
                                 <span className="font-medium">
                                   {account.montoOriginal > 0
@@ -630,9 +690,9 @@ export default function CuentasPorPagarPage() {
                                     : "0%"}
                                 </span>
                               </div>
-                              <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div className="bg-muted h-2 overflow-hidden rounded-full">
                                 <div
-                                  className="h-full bg-green-500 rounded-full transition-all"
+                                  className="h-full rounded-full bg-green-500 transition-all"
                                   style={{
                                     width:
                                       account.montoOriginal > 0
@@ -643,30 +703,43 @@ export default function CuentasPorPagarPage() {
                               </div>
                             </div>
 
+                            {/* Recent payments */}
                             {account.pagosRecientes.length > 0 && (
                               <div>
-                                <p className="text-xs font-semibold text-muted-foreground mb-2">Pagos recientes</p>
+                                <p className="text-muted-foreground mb-2 text-xs font-semibold">Pagos recientes</p>
                                 <div className="space-y-1">
                                   {account.pagosRecientes.map((pago) => (
-                                    <div key={pago.id} className="flex items-center justify-between text-xs py-1 border-b border-border/50 last:border-0">
+                                    <div
+                                      key={pago.id}
+                                      className="border-border/50 flex items-center justify-between border-b py-1 text-xs last:border-0"
+                                    >
                                       <span className="text-muted-foreground">{fmtDate(pago.fechaPago)}</span>
-                                      <span className="capitalize text-muted-foreground">{pago.metodoPago}</span>
+                                      <span className="text-muted-foreground capitalize">{pago.metodoPago}</span>
                                       {pago.numeroReferencia && (
-                                        <span className="text-muted-foreground text-[11px]">Ref: {pago.numeroReferencia}</span>
+                                        <span className="text-muted-foreground text-[11px]">
+                                          Ref: {pago.numeroReferencia}
+                                        </span>
                                       )}
-                                      <span className="font-semibold text-green-700">{fmt(pago.monto, account.moneda)}</span>
+                                      <span className="font-semibold text-green-700">
+                                        {fmt(pago.monto, account.moneda)}
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
                               </div>
                             )}
 
+                            {/* Monthly history grid */}
                             <div>
-                              <p className="text-xs font-semibold text-muted-foreground mb-2">Historial mensual (12 meses)</p>
-                              <div className="grid grid-cols-6 md:grid-cols-12 gap-1">
+                              <p className="text-muted-foreground mb-2 text-xs font-semibold">
+                                Historial mensual (12 meses)
+                              </p>
+                              <div className="grid grid-cols-6 gap-1 md:grid-cols-12">
                                 {account.monthlyHistory.map((h) => {
                                   const [y, m] = h.month.split("-");
-                                  const label = new Date(Number(y), Number(m) - 1).toLocaleDateString("es-DO", { month: "short" });
+                                  const label = new Date(Number(y), Number(m) - 1).toLocaleDateString("es-DO", {
+                                    month: "short",
+                                  });
                                   return (
                                     <div
                                       key={h.month}
@@ -678,7 +751,11 @@ export default function CuentasPorPagarPage() {
                                       title={`${h.month}: ${fmt(h.totalPagado, account.moneda)}`}
                                     >
                                       <div className="font-semibold">{label}</div>
-                                      <div>{h.totalPagado > 0 ? fmt(h.totalPagado, account.moneda).replace("DOP", "").trim() : "\u2014"}</div>
+                                      <div>
+                                        {h.totalPagado > 0
+                                          ? fmt(h.totalPagado, account.moneda).replace("DOP", "").trim()
+                                          : "—"}
+                                      </div>
                                     </div>
                                   );
                                 })}
@@ -696,11 +773,12 @@ export default function CuentasPorPagarPage() {
         </CardContent>
       </Card>
 
+      {/* Create/Edit Modal */}
       <Dialog open={showModal} onOpenChange={setShowModal}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingId ? "Editar Cuenta por Pagar" : "Nueva Cuenta por Pagar"}</DialogTitle>
-            <DialogDescription>Completa la informaci\u00f3n de la obligaci\u00f3n</DialogDescription>
+            <DialogDescription>Completa la información de la obligación</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
@@ -713,8 +791,8 @@ export default function CuentasPorPagarPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="factura">Factura</SelectItem>
-                    <SelectItem value="prestamo">Pr\u00e9stamo</SelectItem>
-                    <SelectItem value="credito">Cr\u00e9dito</SelectItem>
+                    <SelectItem value="prestamo">Préstamo</SelectItem>
+                    <SelectItem value="credito">Crédito</SelectItem>
                     <SelectItem value="servicio">Servicio</SelectItem>
                     <SelectItem value="otro">Otro</SelectItem>
                   </SelectContent>
@@ -758,13 +836,13 @@ export default function CuentasPorPagarPage() {
               <Input
                 value={form.concepto}
                 onChange={(e) => setField("concepto", e.target.value)}
-                placeholder="Descripci\u00f3n de la cuenta por pagar"
+                placeholder="Descripción de la cuenta por pagar"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>N\u00b0 Documento *</Label>
+                <Label>N° Documento *</Label>
                 <Input
                   value={form.numeroDocumento}
                   onChange={(e) => setField("numeroDocumento", e.target.value)}
@@ -789,12 +867,20 @@ export default function CuentasPorPagarPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
-                <Label>Fecha Emisi\u00f3n *</Label>
-                <Input type="date" value={form.fechaEmision} onChange={(e) => setField("fechaEmision", e.target.value)} />
+                <Label>Fecha Emisión *</Label>
+                <Input
+                  type="date"
+                  value={form.fechaEmision}
+                  onChange={(e) => setField("fechaEmision", e.target.value)}
+                />
               </div>
               <div className="space-y-1">
                 <Label>Fecha Vencimiento *</Label>
-                <Input type="date" value={form.fechaVencimiento} onChange={(e) => setField("fechaVencimiento", e.target.value)} />
+                <Input
+                  type="date"
+                  value={form.fechaVencimiento}
+                  onChange={(e) => setField("fechaVencimiento", e.target.value)}
+                />
               </div>
             </div>
 
@@ -839,7 +925,7 @@ export default function CuentasPorPagarPage() {
                 />
               </div>
               <div className="space-y-1">
-                <Label>N\u00b0 Cuotas</Label>
+                <Label>N° Cuotas</Label>
                 <Input
                   type="number"
                   min="0"
@@ -866,19 +952,20 @@ export default function CuentasPorPagarPage() {
               Cancelar
             </Button>
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
+              {saving ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : null}
               {editingId ? "Guardar cambios" : "Crear cuenta"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirmation */}
       <Dialog open={deleteConfirmId !== null} onOpenChange={() => setDeleteConfirmId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>Eliminar cuenta por pagar</DialogTitle>
             <DialogDescription>
-              \u00BFEst\u00e1s seguro que deseas eliminar esta cuenta? Esta acci\u00f3n no se puede deshacer.
+              ¿Estás seguro que deseas eliminar esta cuenta? Esta acción no se puede deshacer.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -890,7 +977,7 @@ export default function CuentasPorPagarPage() {
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
               disabled={deleting !== null}
             >
-              {deleting ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : null}
+              {deleting ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : null}
               Eliminar
             </Button>
           </DialogFooter>

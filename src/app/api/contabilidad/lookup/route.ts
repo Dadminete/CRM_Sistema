@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
+
+import { eq, asc, and, or, sql } from "drizzle-orm";
+
 import { db } from "@/lib/db";
 import { categoriasCuentas, banks, cuentasBancarias, cajas, cuentasPorPagar, proveedores } from "@/lib/db/schema";
-import { eq, asc, and, or, ilike } from "drizzle-orm";
 
 export async function GET(req: Request) {
   try {
@@ -66,7 +68,7 @@ export async function GET(req: Request) {
       })
       .from(cuentasPorPagar)
       .leftJoin(proveedores, eq(cuentasPorPagar.proveedorId, proveedores.id))
-      .where(eq(cuentasPorPagar.estado, "pendiente"))
+      .where(sql`CAST(${cuentasPorPagar.montoPendiente} AS DECIMAL) > 0`)
       .orderBy(asc(cuentasPorPagar.numeroDocumento));
 
     const [categorias, bancos, cuentasBancariasData, cajasData, cuentasPorPagarData] = await Promise.all([
@@ -87,8 +89,11 @@ export async function GET(req: Request) {
         cuentasPorPagar: cuentasPorPagarData,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error fetching lookup data:", error);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: error instanceof Error ? error.message : String(error) },
+      { status: 500 },
+    );
   }
 }

@@ -163,6 +163,11 @@ export const sidebarItemsBase: NavGroup[] = [
             icon: "LayoutDashboard",
           },
           {
+            title: "Ajustes Financieros",
+            url: "/dashboard/contabilidad/ajustes-financieros",
+            icon: "SlidersHorizontal",
+          },
+          {
             title: "Categorias Cuentas",
             url: "/dashboard/contabilidad/categorias-cuentas",
             icon: "FolderTree",
@@ -178,9 +183,24 @@ export const sidebarItemsBase: NavGroup[] = [
             icon: "Receipt",
           },
           {
+            title: "Cuentas por Pagar",
+            url: "/dashboard/contabilidad/cuentas-por-pagar",
+            icon: "CreditCard",
+          },
+          {
+            title: "Finanzas",
+            url: "/dashboard/contabilidad/finanzas",
+            icon: "PiggyBank",
+          },
+          {
             title: "Ingresos & Gastos",
             url: "/dashboard/contabilidad/ingresos-gastos",
             icon: "TrendingUp",
+          },
+          {
+            title: "Listado de Ingresos",
+            url: "/dashboard/listados/ingresos",
+            icon: "ArrowUpCircle",
           },
           {
             title: "Pagos X Mes",
@@ -191,11 +211,6 @@ export const sidebarItemsBase: NavGroup[] = [
             title: "Traspasos",
             url: "/dashboard/contabilidad/traspasos",
             icon: "ArrowLeftRight",
-          },
-          {
-            title: "Listado de Ingresos",
-            url: "/dashboard/listados/ingresos",
-            icon: "ArrowUpCircle",
           },
         ],
       },

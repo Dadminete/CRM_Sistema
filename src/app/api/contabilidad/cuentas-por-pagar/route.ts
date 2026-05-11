@@ -1,8 +1,8 @@
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { desc, eq, gte } from "drizzle-orm";
 
+import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
 import { db } from "@/lib/db";
 import { cuentasPorPagar, pagosCuentasPorPagar, proveedores } from "@/lib/db/schema";
-import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
 import { jsonResponse } from "@/lib/serializers";
 
 const CACHE_KEY = "cuentas-por-pagar";
@@ -134,7 +134,9 @@ export async function GET() {
 
     const totalPendiente = accounts.reduce((acc, a) => acc + a.montoPendiente, 0);
     const totalOriginal = accounts.reduce((acc, a) => acc + a.montoOriginal, 0);
-    const vencidas = accounts.filter((a) => a.montoPendiente > 0 && calcDiasVencido(a.fechaVencimiento, a.montoPendiente) > 0);
+    const vencidas = accounts.filter(
+      (a) => a.montoPendiente > 0 && calcDiasVencido(a.fechaVencimiento, a.montoPendiente) > 0,
+    );
 
     const monthlySummary = monthKeys.map((month) => {
       const totalPagado = accounts.reduce((acc, account) => {
@@ -193,8 +195,11 @@ export async function GET() {
 
     cacheSet(CACHE_KEY, payload, CACHE_TTL);
     return jsonResponse(payload);
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error cargando cuentas por pagar" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error cargando cuentas por pagar" },
+      { status: 500 },
+    );
   }
 }
 
@@ -225,6 +230,7 @@ export async function POST(req: Request) {
     const [created] = await db
       .insert(cuentasPorPagar)
       .values({
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         proveedorId: proveedorId || null,
         numeroDocumento: String(numeroDocumento),
         tipoDocumento: String(tipoDocumento),
@@ -234,11 +240,13 @@ export async function POST(req: Request) {
         montoOriginal: String(monto),
         montoPendiente: String(monto),
         cuotaMensual: cuotaMensual != null && cuotaMensual !== "" ? String(toNumber(cuotaMensual)) : null,
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         moneda: String(moneda || "DOP"),
         estado: "pendiente",
         diasVencido: calcDiasVencido(String(fechaVencimiento), monto),
         observaciones: observaciones ? String(observaciones) : null,
         numeroCuotas: numeroCuotas ? Number(numeroCuotas) : null,
+        // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
         tipo: String(tipo || "factura"),
         updatedAt: new Date().toISOString(),
       })
@@ -246,8 +254,11 @@ export async function POST(req: Request) {
 
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, data: created });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error creando cuenta por pagar" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error creando cuenta por pagar" },
+      { status: 500 },
+    );
   }
 }
 
@@ -278,6 +289,7 @@ export async function PUT(req: Request) {
       updatedAt: new Date().toISOString(),
     };
 
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     if (body?.proveedorId !== undefined) patch.proveedorId = body.proveedorId || null;
     if (body?.numeroDocumento !== undefined) patch.numeroDocumento = String(body.numeroDocumento);
     if (body?.tipoDocumento !== undefined) patch.tipoDocumento = String(body.tipoDocumento);
@@ -287,10 +299,13 @@ export async function PUT(req: Request) {
     if (body?.montoOriginal !== undefined) patch.montoOriginal = String(toNumber(body.montoOriginal));
     if (body?.montoPendiente !== undefined) patch.montoPendiente = String(toNumber(body.montoPendiente));
     if (body?.cuotaMensual !== undefined)
-      patch.cuotaMensual = body.cuotaMensual != null && body.cuotaMensual !== "" ? String(toNumber(body.cuotaMensual)) : null;
+      patch.cuotaMensual =
+        body.cuotaMensual != null && body.cuotaMensual !== "" ? String(toNumber(body.cuotaMensual)) : null;
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     if (body?.moneda !== undefined) patch.moneda = String(body.moneda || "DOP");
     if (body?.observaciones !== undefined) patch.observaciones = body.observaciones ? String(body.observaciones) : null;
     if (body?.numeroCuotas !== undefined) patch.numeroCuotas = body.numeroCuotas ? Number(body.numeroCuotas) : null;
+    // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
     if (body?.tipo !== undefined) patch.tipo = String(body.tipo || "factura");
 
     const nextPendiente =
@@ -301,7 +316,8 @@ export async function PUT(req: Request) {
       body?.fechaVencimiento !== undefined ? String(body.fechaVencimiento) : String(current[0].fechaVencimiento);
 
     const validEstados = ["pendiente", "parcial", "pagada"];
-    const estadoManual = body?.estadoManual && validEstados.includes(String(body.estadoManual)) ? String(body.estadoManual) : null;
+    const estadoManual =
+      body?.estadoManual && validEstados.includes(String(body.estadoManual)) ? String(body.estadoManual) : null;
     const estadoCalculado = nextPendiente <= 0 ? "pagada" : nextPendiente < nextOriginal ? "parcial" : "pendiente";
     patch.estado = estadoManual ?? estadoCalculado;
     patch.diasVencido = calcDiasVencido(nextVencimiento, nextPendiente);
@@ -309,8 +325,11 @@ export async function PUT(req: Request) {
     const [updated] = await db.update(cuentasPorPagar).set(patch).where(eq(cuentasPorPagar.id, id)).returning();
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, data: updated });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error actualizando cuenta por pagar" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error actualizando cuenta por pagar" },
+      { status: 500 },
+    );
   }
 }
 
@@ -326,7 +345,10 @@ export async function DELETE(req: Request) {
     await db.delete(cuentasPorPagar).where(eq(cuentasPorPagar.id, id));
     cacheInvalidate(CACHE_KEY);
     return jsonResponse({ success: true, message: "Cuenta por pagar eliminada" });
-  } catch (error: any) {
-    return jsonResponse({ success: false, error: error?.message ?? "Error eliminando cuenta por pagar" }, { status: 500 });
+  } catch (error: unknown) {
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Error eliminando cuenta por pagar" },
+      { status: 500 },
+    );
   }
 }

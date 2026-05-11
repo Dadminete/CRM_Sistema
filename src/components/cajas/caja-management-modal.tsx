@@ -170,7 +170,6 @@ export function CajaManagementModal({
           cajaId: selectedCajaId,
           monto: montoIngresado,
           observaciones: forceAdmin ? `[FORZADO ADMIN] - ${observaciones}` : observaciones,
-          usuarioId,
         }),
       });
       const data = await res.json();
@@ -205,7 +204,6 @@ export function CajaManagementModal({
           sessionId: activeSession.id,
           montoCierre: montoCierreIngresado,
           observaciones: observaciones,
-          usuarioId,
         }),
       });
       const data = await res.json();

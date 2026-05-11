@@ -222,7 +222,7 @@ export default function AjustesFinancierosPage() {
   };
 
   const deactivateFixedExpense = async (id: string) => {
-    if (!confirm("\u00BFDesactivar este gasto fijo?")) return;
+    if (!confirm("¿Desactivar este gasto fijo?")) return;
 
     try {
       const res = await fetch(`/api/contabilidad/gastos-fijos?id=${id}`, { method: "DELETE" });
@@ -280,25 +280,49 @@ export default function AjustesFinancierosPage() {
           </div>
           <div className="space-y-2">
             <Label>Version</Label>
-            <Input value={form.version} onChange={(e) => setForm((prev) => ({ ...prev, version: e.target.value }))} disabled={loading || saving} />
+            <Input
+              value={form.version}
+              onChange={(e) => setForm((prev) => ({ ...prev, version: e.target.value }))}
+              disabled={loading || saving}
+            />
           </div>
           <div className="space-y-2">
             <Label>Ahorro objetivo (%)</Label>
-            <Input inputMode="decimal" value={form.targetSavingsRate} onChange={(e) => setForm((prev) => ({ ...prev, targetSavingsRate: e.target.value }))} disabled={loading || saving} />
+            <Input
+              inputMode="decimal"
+              value={form.targetSavingsRate}
+              onChange={(e) => setForm((prev) => ({ ...prev, targetSavingsRate: e.target.value }))}
+              disabled={loading || saving}
+            />
           </div>
           <div className="space-y-2">
             <Label>Techo de gasto (%)</Label>
-            <Input inputMode="decimal" value={form.maxExpenseRatio} onChange={(e) => setForm((prev) => ({ ...prev, maxExpenseRatio: e.target.value }))} disabled={loading || saving} />
+            <Input
+              inputMode="decimal"
+              value={form.maxExpenseRatio}
+              onChange={(e) => setForm((prev) => ({ ...prev, maxExpenseRatio: e.target.value }))}
+              disabled={loading || saving}
+            />
           </div>
           <div className="space-y-2">
             <Label>Maximo cartera vencida (%)</Label>
-            <Input inputMode="decimal" value={form.maxReceivablesOverdueRatio} onChange={(e) => setForm((prev) => ({ ...prev, maxReceivablesOverdueRatio: e.target.value }))} disabled={loading || saving} />
+            <Input
+              inputMode="decimal"
+              value={form.maxReceivablesOverdueRatio}
+              onChange={(e) => setForm((prev) => ({ ...prev, maxReceivablesOverdueRatio: e.target.value }))}
+              disabled={loading || saving}
+            />
           </div>
           <div className="space-y-2">
             <Label>Maxima presion de deuda (%)</Label>
-            <Input inputMode="decimal" value={form.maxDebtPressureRatio} onChange={(e) => setForm((prev) => ({ ...prev, maxDebtPressureRatio: e.target.value }))} disabled={loading || saving} />
+            <Input
+              inputMode="decimal"
+              value={form.maxDebtPressureRatio}
+              onChange={(e) => setForm((prev) => ({ ...prev, maxDebtPressureRatio: e.target.value }))}
+              disabled={loading || saving}
+            />
           </div>
-          <div className="md:col-span-2 flex justify-end">
+          <div className="flex justify-end md:col-span-2">
             <Button onClick={saveRules} disabled={loading || saving}>
               <Save className="h-4 w-4" />
               Guardar reglas
@@ -317,27 +341,53 @@ export default function AjustesFinancierosPage() {
         <CardContent className="grid gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Nombre *</Label>
-            <Input value={fixedForm.nombre} onChange={(e) => setFixedForm((p) => ({ ...p, nombre: e.target.value }))} disabled={savingFixed} />
+            <Input
+              value={fixedForm.nombre}
+              onChange={(e) => setFixedForm((p) => ({ ...p, nombre: e.target.value }))}
+              disabled={savingFixed}
+            />
           </div>
           <div className="space-y-2">
             <Label>Monto mensual *</Label>
-            <Input inputMode="decimal" value={fixedForm.monto} onChange={(e) => setFixedForm((p) => ({ ...p, monto: e.target.value }))} disabled={savingFixed} />
+            <Input
+              inputMode="decimal"
+              value={fixedForm.monto}
+              onChange={(e) => setFixedForm((p) => ({ ...p, monto: e.target.value }))}
+              disabled={savingFixed}
+            />
           </div>
           <div className="space-y-2">
             <Label>Dia de vencimiento *</Label>
-            <Input inputMode="numeric" value={fixedForm.diaVencimiento} onChange={(e) => setFixedForm((p) => ({ ...p, diaVencimiento: e.target.value }))} disabled={savingFixed} />
+            <Input
+              inputMode="numeric"
+              value={fixedForm.diaVencimiento}
+              onChange={(e) => setFixedForm((p) => ({ ...p, diaVencimiento: e.target.value }))}
+              disabled={savingFixed}
+            />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label>Descripcion</Label>
-            <Textarea rows={2} value={fixedForm.descripcion} onChange={(e) => setFixedForm((p) => ({ ...p, descripcion: e.target.value }))} disabled={savingFixed} />
+            <Textarea
+              rows={2}
+              value={fixedForm.descripcion}
+              onChange={(e) => setFixedForm((p) => ({ ...p, descripcion: e.target.value }))}
+              disabled={savingFixed}
+            />
           </div>
           <div className="space-y-2 md:col-span-2">
             <Label>Observaciones</Label>
-            <Textarea rows={2} value={fixedForm.observaciones} onChange={(e) => setFixedForm((p) => ({ ...p, observaciones: e.target.value }))} disabled={savingFixed} />
+            <Textarea
+              rows={2}
+              value={fixedForm.observaciones}
+              onChange={(e) => setFixedForm((p) => ({ ...p, observaciones: e.target.value }))}
+              disabled={savingFixed}
+            />
           </div>
-          <div className="md:col-span-2 flex justify-end gap-2">
+          <div className="flex justify-end gap-2 md:col-span-2">
             {editingFixedId ? (
-              <Button variant="outline" onClick={resetFixedForm} disabled={savingFixed}>Cancelar Edicion</Button>
+              <Button variant="outline" onClick={resetFixedForm} disabled={savingFixed}>
+                Cancelar Edicion
+              </Button>
             ) : null}
             <Button onClick={saveFixedExpense} disabled={savingFixed}>
               <Plus className="h-4 w-4" />
@@ -370,7 +420,10 @@ export default function AjustesFinancierosPage() {
                     fixedData.fixedExpenses.map((fixed) => (
                       <TableRow key={fixed.id} className={fixed.id === selectedFixedId ? "bg-muted/40" : ""}>
                         <TableCell>
-                          <button className="text-left font-medium underline-offset-2 hover:underline" onClick={() => setSelectedFixedId(fixed.id)}>
+                          <button
+                            className="text-left font-medium underline-offset-2 hover:underline"
+                            onClick={() => setSelectedFixedId(fixed.id)}
+                          >
                             {fixed.nombre}
                           </button>
                         </TableCell>
@@ -395,7 +448,9 @@ export default function AjustesFinancierosPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-muted-foreground text-center">No hay gastos fijos registrados.</TableCell>
+                      <TableCell colSpan={5} className="text-muted-foreground text-center">
+                        No hay gastos fijos registrados.
+                      </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
@@ -407,14 +462,18 @@ export default function AjustesFinancierosPage() {
         <Card>
           <CardHeader>
             <CardTitle>Que mejorar</CardTitle>
-            <CardDescription>Recomendaciones autom\u00e1ticas por tus gastos fijos.</CardDescription>
+            <CardDescription>Recomendaciones automáticas por tus gastos fijos.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {fixedData?.recommendations?.map((rec, idx) => (
               <div key={`${rec.title}-${idx}`} className="rounded-md border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-medium">{rec.title}</p>
-                  <Badge variant={rec.priority === "alta" ? "destructive" : rec.priority === "media" ? "outline" : "secondary"}>
+                  <Badge
+                    variant={
+                      rec.priority === "alta" ? "destructive" : rec.priority === "media" ? "outline" : "secondary"
+                    }
+                  >
                     {rec.priority}
                   </Badge>
                 </div>
@@ -479,7 +538,9 @@ export default function AjustesFinancierosPage() {
                         ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={3} className="text-muted-foreground text-center">Sin pagos registrados en el periodo.</TableCell>
+                        <TableCell colSpan={3} className="text-muted-foreground text-center">
+                          Sin pagos registrados en el periodo.
+                        </TableCell>
                       </TableRow>
                     )}
                   </TableBody>
