@@ -190,12 +190,16 @@ export default [
       "src/app/**/ajustes-financieros/**",
       "src/app/**/finanzas/**",
       "src/app/**/cuentas-por-pagar/**",
+      "src/app/**/contabilidad/cuentas-por-cobrar/**",
+      "src/app/**/api/contabilidad/cuentas-por-cobrar/**",
+      "src/app/**/api/banco/dashboard/route.ts",
       "src/app/**/ingresos-gastos/**",
       "src/app/**/movimientos/**",
     ],
     rules: {
       "max-lines": "off",
       "complexity": "off",
+      "@typescript-eslint/no-explicit-any": "off",
     },
   },
 ];

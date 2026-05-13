@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import { ArrowDownLeft, ArrowUpRight, Landmark, CreditCard, Activity } from "lucide-react";
+
+import { ArrowDownLeft, ArrowUpRight, Landmark, CreditCard } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,8 +15,9 @@ interface OverviewCardsProps {
     ingresosHoy: string | number;
     gastosHoy: string | number;
     activeAccounts: number;
+    ingresosDelMesPorBanco?: { banco: string; total: number }[];
   };
-  history: any[];
+  history: Array<{ date: string; ingresos: number; gastos: number }>;
 }
 
 const chartConfig = {
@@ -37,26 +39,36 @@ export function OverviewCards({ data, history }: OverviewCardsProps) {
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:col-span-1 lg:grid-cols-1">
-        <Card className="shadow-xs bg-primary text-primary-foreground">
+        <Card className="bg-primary text-primary-foreground shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Balance Total</CardTitle>
             <Landmark className="size-4 opacity-70" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold tabular-nums">
-              {formatCurrency(Number(data.totalBalance))}
-            </div>
+            <div className="text-2xl font-bold tabular-nums">{formatCurrency(Number(data.totalBalance))}</div>
             <p className="text-primary-foreground/70 text-xs">Suma de todas las cuentas activas</p>
           </CardContent>
         </Card>
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Cuentas Activas</CardTitle>
-            <CreditCard className="size-4 text-muted-foreground" />
+            <CreditCard className="text-muted-foreground size-4" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{data.activeAccounts}</div>
-            <p className="text-muted-foreground text-xs">Cuentas bancarias operativas</p>
+            <p className="text-muted-foreground mb-2 text-xs">Ingresos del mes por banco</p>
+            {data.ingresosDelMesPorBanco && data.ingresosDelMesPorBanco.length > 0 ? (
+              <div className="space-y-1">
+                {data.ingresosDelMesPorBanco.map((item) => (
+                  <div key={item.banco} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground max-w-[100px] truncate">{item.banco}</span>
+                    <span className="font-medium text-green-600 tabular-nums">{formatCurrency(item.total)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-muted-foreground text-xs">Sin ingresos este mes</p>
+            )}
           </CardContent>
         </Card>
         <Card className="shadow-xs">
@@ -74,10 +86,10 @@ export function OverviewCards({ data, history }: OverviewCardsProps) {
         <Card className="shadow-xs">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Gastos Hoy</CardTitle>
-            <ArrowUpRight className="size-4 text-destructive" />
+            <ArrowUpRight className="text-destructive size-4" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-destructive tabular-nums">
+            <div className="text-destructive text-2xl font-bold tabular-nums">
               {formatCurrency(Number(data.gastosHoy))}
             </div>
             <p className="text-muted-foreground text-xs">Total pagado hoy</p>
@@ -85,7 +97,7 @@ export function OverviewCards({ data, history }: OverviewCardsProps) {
         </Card>
       </div>
 
-      <Card className="lg:col-span-3 shadow-xs">
+      <Card className="shadow-xs lg:col-span-3">
         <CardHeader>
           <CardTitle>Tendencia de Movimientos</CardTitle>
           <CardDescription>Ingresos vs Gastos en los últimos 7 días</CardDescription>
@@ -94,13 +106,8 @@ export function OverviewCards({ data, history }: OverviewCardsProps) {
           <ChartContainer config={chartConfig} className="aspect-auto h-[240px] w-full">
             <AreaChart data={chartData} margin={{ left: 12, right: 12 }}>
               <CartesianGrid vertical={false} />
-              <XAxis
-                dataKey="date"
-                tickLine={false}
-                axisLine={false}
-                tickMargin={8}
-              />
-              <YAxis 
+              <XAxis dataKey="date" tickLine={false} axisLine={false} tickMargin={8} />
+              <YAxis
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}

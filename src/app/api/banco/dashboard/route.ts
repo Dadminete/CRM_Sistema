@@ -1,17 +1,23 @@
-import { db } from "@/lib/db";
-import { banks, cuentasBancarias, movimientosContables, categoriasCuentas, cuentasContables } from "@/lib/db/schema";
+import { subDays, startOfDay, startOfMonth } from "date-fns";
 import { eq, and, sql, desc, ne } from "drizzle-orm";
-import { subDays, startOfDay } from "date-fns";
+
+import { db } from "@/lib/db";
+import { movimientosContables, categoriasCuentas } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
 
 export const dynamic = "force-dynamic";
 
-function rowsFromExecuteResult<T>(result: any): T[] {
+function rowsFromExecuteResult<T>(result: unknown): T[] {
   if (Array.isArray(result)) {
     return result as T[];
   }
-  if (result && Array.isArray(result.rows)) {
-    return result.rows as T[];
+  if (
+    typeof result === "object" &&
+    result !== null &&
+    "rows" in result &&
+    Array.isArray((result as { rows?: unknown }).rows)
+  ) {
+    return (result as { rows: T[] }).rows;
   }
   return [];
 }
@@ -20,6 +26,7 @@ export async function GET() {
   try {
     const today = startOfDay(new Date());
     const sevenDaysAgo = subDays(today, 7);
+    const startOfCurrentMonth = startOfMonth(new Date());
 
     // Get transfer category ID if exists (non-blocking)
     let traspasoCatId: number | null = null;
@@ -54,23 +61,30 @@ export async function GET() {
 
     let totalBalance = 0;
     const distMap = new Map<string, number>();
-    const boxesData: any[] = [];
+    const boxesData: Array<{ name: string; balance: number; type: string }> = [];
 
-    rowsFromExecuteResult(accountsDataRaw).forEach((row: any) => {
-      const saldoInicial = Number(row.saldo_inicial || 0);
-      const ingresos = Number(row.ingresos || 0);
-      const gastos = Number(row.gastos || 0);
+    rowsFromExecuteResult<{
+      saldo_inicial: string | number;
+      ingresos: string | number;
+      gastos: string | number;
+      bank_name: string;
+      numero_cuenta: string;
+      type?: string;
+    }>(accountsDataRaw).forEach((row) => {
+      const saldoInicial = Number(row.saldo_inicial ?? 0);
+      const ingresos = Number(row.ingresos ?? 0);
+      const gastos = Number(row.gastos ?? 0);
       const balance = saldoInicial + ingresos - gastos;
 
       totalBalance += balance;
 
       const bankName = String(row.bank_name);
-      distMap.set(bankName, (distMap.get(bankName) || 0) + balance);
+      distMap.set(bankName, (distMap.get(bankName) ?? 0) + balance);
 
       boxesData.push({
         name: `${bankName} - ${row.numero_cuenta}`,
         balance: balance,
-        type: row.type || "Desconocido",
+        type: row.type ?? "Desconocido",
       });
     });
 
@@ -92,12 +106,28 @@ export async function GET() {
       .where(
         and(
           sql`cuenta_bancaria_id IS NOT NULL`,
-          traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`true`
-        )
+          traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`true`,
+        ),
       );
-    const dailyStats = dailyStatsData[0] || { ingresosHoy: "0", gastosHoy: "0" };
+    const dailyStats = dailyStatsData[0] ?? { ingresosHoy: "0", gastosHoy: "0" };
 
-    // 3. Historical Trend (Last 7 Days)
+    // 2b. Monthly ingresos per bank
+    const monthlyIngresosPorBancoRaw = await db.execute(sql`
+      SELECT
+        b.nombre AS "bank_name",
+        COALESCE(SUM(CASE WHEN mc.tipo = 'ingreso' THEN CAST(mc.monto AS NUMERIC) ELSE 0 END), 0) AS "total_ingresos"
+      FROM banks b
+      INNER JOIN cuentas_bancarias cb ON cb.bank_id = b.id AND cb.activo = true
+      LEFT JOIN movimientos_contables mc
+        ON mc.cuenta_bancaria_id = cb.id
+        AND mc.fecha >= ${startOfCurrentMonth.toISOString()}
+        ${traspasoCatId ? sql`AND mc.categoria_id != ${traspasoCatId}` : sql``}
+      GROUP BY b.nombre
+      ORDER BY b.nombre ASC
+    `);
+    const ingresosDelMesPorBanco = rowsFromExecuteResult<{ bank_name: string; total_ingresos: string }>(
+      monthlyIngresosPorBancoRaw,
+    ).map((r) => ({ banco: r.bank_name, total: Number(r.total_ingresos) }));
     const historyData = await db.execute(sql`
         SELECT 
           TO_CHAR(fecha, 'DD-MM') as date,
@@ -125,14 +155,14 @@ export async function GET() {
       .where(
         and(
           sql`cuenta_bancaria_id IS NOT NULL`,
-          traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`true`
-        )
+          traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`true`,
+        ),
       )
       .orderBy(desc(movimientosContables.fecha))
       .limit(10);
 
     // 6. Recent Transfers (best effort: some deployments may not have this table yet)
-    let recentTransfers: any[] = [];
+    let recentTransfers: Array<Record<string, unknown>> = [];
     try {
       const transferResult = await db.execute(sql`
         SELECT 
@@ -164,6 +194,7 @@ export async function GET() {
           gastosHoy: dailyStats.gastosHoy,
           activeAccounts: activeAccountsCount,
           discrepancias: 0,
+          ingresosDelMesPorBanco,
         },
         history: rowsFromExecuteResult(historyData),
         distribution,
@@ -173,8 +204,8 @@ export async function GET() {
         activeSessions: [],
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Bancos Dashboard API Error:", error);
-    return jsonResponse({ success: false, error: error.message }, 500);
+    return jsonResponse({ success: false, error: error instanceof Error ? error.message : "Error inesperado" }, 500);
   }
 }
