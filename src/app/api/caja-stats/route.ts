@@ -123,6 +123,27 @@ async function getTotalIngresosUnificado(
   return Number(result[0]?.total ?? 0);
 }
 
+async function getTotalGastosUnificado(
+  cajaIds: string[],
+  start: Date,
+  end: Date,
+  traspasoCatId: string | null,
+): Promise<number> {
+  const result = await db
+    .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
+    .from(movimientosContables)
+    .where(
+      and(
+        eq(movimientosContables.tipo, "gasto"),
+        traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
+        or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
+        gte(movimientosContables.fecha, start.toISOString()),
+        lte(movimientosContables.fecha, end.toISOString()),
+      ),
+    );
+  return Number(result[0]?.total ?? 0);
+}
+
 export async function GET() {
   try {
     const cajaIds = await getCajaIds();
@@ -137,13 +158,14 @@ export async function GET() {
 
     const ultimosMeses = await Promise.all(
       buildLastMonthRanges(4).map(async ({ label, start, end }) => {
-        const [ingresos, gastos, totalIngresos] = await Promise.all([
+        const [ingresos, gastos, totalIngresos, totalGastos] = await Promise.all([
           getTotalsByType(cajaIds, "ingreso", start, end, traspasoCatId),
           getTotalsByType(cajaIds, "gasto", start, end, traspasoCatId),
           getTotalIngresosUnificado(cajaIds, start, end, traspasoCatId),
+          getTotalGastosUnificado(cajaIds, start, end, traspasoCatId),
         ]);
 
-        return { mes: label, ingresos, gastos, totalIngresos };
+        return { mes: label, ingresos, gastos, totalIngresos, totalGastos };
       }),
     );
 

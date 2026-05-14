@@ -7,7 +7,7 @@ import { Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const IDLE_TIMEOUT_MS = 45_000;
+const IDLE_TIMEOUT_MS = 80_000;
 const ACTIVITY_EVENTS: ReadonlyArray<keyof WindowEventMap> = [
   "mousemove",
   "mousedown",
@@ -155,7 +155,7 @@ export function SessionLockScreen({ children }: Readonly<{ children: ReactNode }
                 <h2 className="text-lg font-semibold">Sesion bloqueada</h2>
                 <p className="text-muted-foreground text-sm">
                   {lockReason === "idle"
-                    ? "La app se bloqueo por inactividad (45 segundos)."
+                    ? "La app se bloqueo por inactividad (1 minuto 20 segundos)."
                     : "Bloqueaste la sesion manualmente."}
                 </p>
               </div>
