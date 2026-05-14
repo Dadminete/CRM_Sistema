@@ -16,5 +16,6 @@ export const recentMovementSchema = z.object({
   descripcion: z.string().nullable(),
   fecha: z.string(),
   metodo: z.string(),
+  banco: z.string().nullable(),
   categoria: z.string().nullable(),
 });

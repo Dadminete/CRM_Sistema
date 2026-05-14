@@ -14,16 +14,69 @@ const invalidateBackupsCache = () => {
   backupsCache = null;
 };
 
+const isVercelEnvironment = () => process.env.VERCEL === "1" || Boolean(process.env.VERCEL_URL);
+const postgresBinaryName = (tool: "pg_dump" | "psql") =>
+  process.platform === "win32" ? `${tool}.exe` : tool;
+
 export const backupService = {
   getBackupPath: () => process.env.BACKUP_PATH || path.join(process.cwd(), "backups"),
   getPostgresBin: () => process.env.POSTGRES_BIN_PATH || "",
+  getPostgresExecutable(tool: "pg_dump" | "psql") {
+    const binaryName = postgresBinaryName(tool);
+    return this.getPostgresBin() ? path.join(this.getPostgresBin(), binaryName) : binaryName;
+  },
+
+  async createBackupViaWebhook(webhookUrl: string, dbUrl: string) {
+    const token = process.env.BACKUP_WEBHOOK_TOKEN;
+    const response = await fetch(webhookUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        databaseUrl: dbUrl,
+        source: "database-dashboard",
+        requestedAt: new Date().toISOString(),
+      }),
+    });
+
+    if (!response.ok) {
+      const details = await response.text();
+      throw new Error(`El webhook de backup respondió ${response.status}: ${details || "sin detalle"}`);
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    invalidateBackupsCache();
+    return {
+      success: true,
+      delegated: true,
+      provider: "webhook",
+      ...payload,
+    };
+  },
 
   async createBackup() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const fileName = `backup-${timestamp}.sql`;
     const filePath = path.join(this.getBackupPath(), fileName);
-    const pgDumpPath = this.getPostgresBin() ? path.join(this.getPostgresBin(), "pg_dump.exe") : "pg_dump";
+    const pgDumpPath = this.getPostgresExecutable("pg_dump");
     const dbUrl = process.env.BACKUP_DATABASE_URL || process.env.DATABASE_URL;
+    const webhookUrl = process.env.BACKUP_WEBHOOK_URL;
+
+    if (!dbUrl) {
+      throw new Error("No hay URL de base de datos disponible para generar el backup");
+    }
+
+    if (webhookUrl) {
+      return this.createBackupViaWebhook(webhookUrl, dbUrl);
+    }
+
+    if (isVercelEnvironment()) {
+      throw new Error(
+        "En Vercel no se puede ejecutar pg_dump ni guardar respaldos locales persistentes. Configura BACKUP_WEBHOOK_URL para delegar el backup a un worker externo o usa los backups administrados por tu proveedor PostgreSQL.",
+      );
+    }
 
     console.log("Backup path:", this.getBackupPath());
     console.log("pg_dump path:", pgDumpPath);
@@ -40,7 +93,7 @@ export const backupService = {
     }
 
     return new Promise((resolve, reject) => {
-      const args = ["--no-owner", "--no-privileges", dbUrl!, "-f", filePath];
+      const args = ["--no-owner", "--no-privileges", dbUrl, "-f", filePath];
       console.log("Running command:", pgDumpPath, args.join(" "));
 
       // Use shell: false (default) to avoid quoting issues on Windows
@@ -118,9 +171,15 @@ export const backupService = {
 
   async restoreBackup(fileName: string) {
     const filePath = path.join(this.getBackupPath(), fileName);
-    const psqlPath = this.getPostgresBin() ? path.join(this.getPostgresBin(), "psql.exe") : "psql";
+    const psqlPath = this.getPostgresExecutable("psql");
 
     if (!fs.existsSync(filePath)) throw new Error("Archivo de respaldo no encontrado");
+
+    if (isVercelEnvironment()) {
+      throw new Error(
+        "La restauración con psql no está disponible en Vercel. Ejecuta la restauración desde un entorno con PostgreSQL client instalado.",
+      );
+    }
 
     if (this.getPostgresBin() && !fs.existsSync(psqlPath)) {
       console.error("psql not found at:", psqlPath);

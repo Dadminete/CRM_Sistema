@@ -140,10 +140,30 @@ JWT_EXPIRES_IN="30d"
 NEXT_PUBLIC_APP_URL="http://localhost:3000"
 NODE_ENV="development"
 
+# Optional: Database Backup (local / servidor tradicional)
+BACKUP_PATH="./backups"
+BACKUP_DATABASE_URL="postgresql://user:password@host/database?sslmode=verify-full"
+
+# Optional: Database Backup en Vercel (delegado a webhook externo)
+BACKUP_WEBHOOK_URL="https://tu-worker-backup.com/api/backup"
+BACKUP_WEBHOOK_TOKEN="tu-token-interno"
+
 # Optional: Rate Limiting
 RATE_LIMIT_WINDOW_MS="900000"  # 15 minutos
 RATE_LIMIT_MAX_REQUESTS="100"
 ```
+
+### Nota sobre backups en Vercel
+
+Vercel no incluye `pg_dump`/`psql` ni almacenamiento local persistente en funciones serverless.
+
+Para usar el botón de backup desde producción:
+
+1. Configura `BACKUP_WEBHOOK_URL` para apuntar a un worker externo (VM, Railway, Render, Fly.io o GitHub Action con endpoint) que sí tenga PostgreSQL client.
+2. Opcionalmente agrega `BACKUP_WEBHOOK_TOKEN` para autenticar la llamada.
+3. El worker externo debe ejecutar `pg_dump` y guardar el archivo en un storage persistente (S3, R2, GCS, etc.).
+
+Si no usas webhook, el backup/restauración por `pg_dump` y `psql` solo funcionará en entornos con esos binarios instalados (por ejemplo, local o un servidor dedicado).
 
 ### 4. Ejecutar Migraciones de Base de Datos
 

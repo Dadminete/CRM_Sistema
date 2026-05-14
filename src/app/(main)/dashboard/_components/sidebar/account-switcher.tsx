@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { BadgeCheck, Bell, CreditCard, LogOut } from "lucide-react";
+import { BadgeCheck, Bell, CreditCard, Lock, LogOut } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -65,6 +65,10 @@ export function AccountSwitcher({
     }
   };
 
+  const handleLockScreen = () => {
+    window.dispatchEvent(new Event("app-lock-request"));
+  };
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -100,6 +104,10 @@ export function AccountSwitcher({
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={handleLockScreen}>
+          <Lock />
+          Bloquear pantalla
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={handleLogout} disabled={isLoggingOut}>
           <LogOut />
           {isLoggingOut ? "Cerrando sesión..." : "Salir"}

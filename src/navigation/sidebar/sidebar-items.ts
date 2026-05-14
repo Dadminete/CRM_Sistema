@@ -315,11 +315,6 @@ export const sidebarItemsBase: NavGroup[] = [
           },
         ],
       },
-      {
-        title: "Default",
-        url: "/dashboard/default",
-        icon: "LayoutDashboard",
-      },
     ],
   },
   {

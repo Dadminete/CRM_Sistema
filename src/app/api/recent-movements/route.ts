@@ -3,7 +3,7 @@ import { desc, and, gte, lte, eq, ne } from "drizzle-orm";
 import { endOfMonth, startOfMonth } from "date-fns";
 
 import { db } from "@/lib/db";
-import { categoriasCuentas, movimientosContables } from "@/lib/db/schema";
+import { banks, categoriasCuentas, movimientosContables } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
@@ -28,10 +28,12 @@ export async function GET() {
         descripcion: movimientosContables.descripcion,
         fecha: movimientosContables.fecha,
         metodo: movimientosContables.metodo,
+        banco: banks.nombre,
         categoria: categoriasCuentas.nombre,
       })
       .from(movimientosContables)
       .leftJoin(categoriasCuentas, eq(movimientosContables.categoriaId, categoriasCuentas.id))
+      .leftJoin(banks, eq(movimientosContables.bankId, banks.id))
       .where(
         traspasoCatId
           ? and(

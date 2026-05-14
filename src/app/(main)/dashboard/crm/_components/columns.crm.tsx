@@ -137,6 +137,11 @@ export const recentMovementsColumns: ColumnDef<z.infer<typeof recentMovementSche
     cell: ({ row }) => <Badge variant="outline">{row.original.metodo.toUpperCase()}</Badge>,
   },
   {
+    accessorKey: "banco",
+    header: ({ column }) => <DataTableColumnHeader column={column} title="Banco" />,
+    cell: ({ row }) => <span className="text-muted-foreground">{row.original.banco || "N/A"}</span>,
+  },
+  {
     accessorKey: "categoria",
     header: ({ column }) => <DataTableColumnHeader column={column} title="Categoría" />,
     cell: ({ row }) => <span className="text-muted-foreground">{row.original.categoria || "S/C"}</span>,

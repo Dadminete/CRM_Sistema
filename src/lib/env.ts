@@ -21,6 +21,8 @@ const envSchema = z.object({
   // Backup (optional)
   BACKUP_PATH: z.string().optional(),
   BACKUP_DATABASE_URL: z.string().url().optional(),
+  BACKUP_WEBHOOK_URL: z.string().url().optional(),
+  BACKUP_WEBHOOK_TOKEN: z.string().optional(),
 
   // Email Configuration (optional but all required if one is set)
   SMTP_HOST: z.string().optional(),
