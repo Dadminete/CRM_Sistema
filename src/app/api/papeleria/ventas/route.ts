@@ -31,6 +31,8 @@ const ventaPOSSchema = z.object({
   metodoPago: z.enum(["EFECTIVO", "TARJETA", "TRANSFERENCIA", "CREDITO", "OTRO"]).default("EFECTIVO"),
   cajaId: z.string().uuid().optional(),
   cuentaBancariaId: z.string().uuid().optional(),
+  descuento: z.coerce.number().min(0).default(0),
+  montoPagado: z.coerce.number().min(0).optional(),
   notas: z.string().optional(),
   items: z.array(carritoItemSchema).min(1, "El carrito no puede estar vacío")
 });
@@ -160,7 +162,7 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: st
 
       let subtotalTotal = 0;
       let impuestosTotal = 0;
-      let totalFinal = 0;
+      let totalBruto = 0;
 
       const detallesParaInsertar = [];
       const movimientosParaInsertar = [];
@@ -191,7 +193,7 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: st
 
         subtotalTotal += subtotalItem;
         impuestosTotal += impuestoItem;
-        totalFinal += totalItem;
+        totalBruto += totalItem;
 
         // Preparar actualización de stock
         productosParaActualizar.push({
@@ -230,6 +232,17 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: st
         throw new Error("No se pudo construir el detalle de la venta. Verifica los productos seleccionados.");
       }
 
+      const descuentoAplicado = Math.min(data.descuento ?? 0, totalBruto);
+      const totalFinal = Math.max(0, totalBruto - descuentoAplicado);
+      const montoPagadoInput = data.montoPagado ?? 0;
+
+      if (data.metodoPago === "EFECTIVO" && montoPagadoInput > 0 && montoPagadoInput < totalFinal) {
+        throw new Error("El monto pagado es insuficiente para completar la venta.");
+      }
+
+      const montoCobrado = data.metodoPago === "CREDITO" ? 0 : totalFinal;
+      const estadoVenta = data.metodoPago === "CREDITO" && totalFinal > 0 ? "PENDIENTE" : "COMPLETADA";
+
       // 4. Insertar Cabecera de la VentaPapeleria
       const [nuevaVenta] = await tx.insert(ventasPapeleria).values({
         numeroVenta,
@@ -239,10 +252,10 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: st
         clienteCedula: data.clienteCedula,
         subtotal: subtotalTotal.toString(),
         impuestos: impuestosTotal.toString(),
-        descuentos: "0",
+        descuentos: descuentoAplicado.toFixed(2),
         total: totalFinal.toString(),
         metodoPago: data.metodoPago as any,
-        estado: "COMPLETADA",
+        estado: estadoVenta as any,
         notas: data.notas,
         cajaId: data.cajaId,
         cuentaBancariaId: data.cuentaBancariaId,
@@ -250,43 +263,45 @@ export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: st
         updatedAt: new Date().toISOString(),
       }).returning();
 
-      let bankId: string | null = null;
-      if (data.cuentaBancariaId) {
-        const cuentaBancaria = await tx
-          .select({ bankId: cuentasBancarias.bankId })
-          .from(cuentasBancarias)
-          .where(eq(cuentasBancarias.id, data.cuentaBancariaId))
-          .limit(1);
+      if (montoCobrado > 0) {
+        let bankId: string | null = null;
+        if (data.cuentaBancariaId) {
+          const cuentaBancaria = await tx
+            .select({ bankId: cuentasBancarias.bankId })
+            .from(cuentasBancarias)
+            .where(eq(cuentasBancarias.id, data.cuentaBancariaId))
+            .limit(1);
 
-        bankId = cuentaBancaria[0]?.bankId ?? null;
-      }
+          bankId = cuentaBancaria[0]?.bankId ?? null;
+        }
 
-      const metodoContable = data.metodoPago === "EFECTIVO" ? "efectivo" : "banco";
+        const metodoContable = data.metodoPago === "EFECTIVO" ? "efectivo" : "banco";
 
-      const [movimientoContable] = await tx
-        .insert(movimientosContables)
-        .values({
-          tipo: "ingreso",
-          monto: totalFinal.toString(),
-          categoriaId: categoriaIngreso[0].id,
-          metodo: metodoContable,
-          cajaId: data.metodoPago === "EFECTIVO" ? (data.cajaId ?? null) : null,
-          bankId,
-          cuentaBancariaId: data.metodoPago === "EFECTIVO" ? null : (data.cuentaBancariaId ?? null),
-          descripcion: `Venta de papeleria ${numeroVenta}`,
-          fecha: new Date().toISOString(),
-          usuarioId,
-          updatedAt: new Date().toISOString(),
-        })
-        .returning({ id: movimientosContables.id });
+        const [movimientoContable] = await tx
+          .insert(movimientosContables)
+          .values({
+            tipo: "ingreso",
+            monto: montoCobrado.toFixed(2),
+            categoriaId: categoriaIngreso[0].id,
+            metodo: metodoContable,
+            cajaId: data.metodoPago === "EFECTIVO" ? (data.cajaId ?? null) : null,
+            bankId,
+            cuentaBancariaId: data.metodoPago === "EFECTIVO" ? null : (data.cuentaBancariaId ?? null),
+            descripcion: `Venta de papeleria ${numeroVenta}`,
+            fecha: new Date().toISOString(),
+            usuarioId,
+            updatedAt: new Date().toISOString(),
+          })
+          .returning({ id: movimientosContables.id });
 
-      await tx
-        .update(ventasPapeleria)
-        .set({ movimientoContableId: movimientoContable.id })
-        .where(eq(ventasPapeleria.id, nuevaVenta.id));
+        await tx
+          .update(ventasPapeleria)
+          .set({ movimientoContableId: movimientoContable.id })
+          .where(eq(ventasPapeleria.id, nuevaVenta.id));
 
-      if (data.metodoPago === "EFECTIVO" && data.cajaId) {
-        await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${totalFinal} WHERE id = ${data.cajaId}`);
+        if (data.metodoPago === "EFECTIVO" && data.cajaId) {
+          await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${montoCobrado} WHERE id = ${data.cajaId}`);
+        }
       }
 
       // 5. Inyectar el ID de la venta en los detalles e insertarlos

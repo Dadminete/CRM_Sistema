@@ -242,6 +242,8 @@ export default function VentaPapeleriaPage() {
         metodoPago,
         cajaId: metodoPago === "EFECTIVO" ? cajaId : undefined,
         cuentaBancariaId: metodoPago === "TRANSFERENCIA" ? cuentaBancariaId : undefined,
+        descuento: Number(totales.descuentoMonto.toFixed(2)),
+        montoPagado: metodoPago === "EFECTIVO" ? Number(montoPagado.toFixed(2)) : undefined,
         notas: `Descuento: RD$ ${totales.descuentoMonto.toFixed(2)} | Cambio: RD$ ${totales.cambio.toFixed(2)}`,
         items: cart.map(c => ({
           productoId: Number(c.producto.id),
