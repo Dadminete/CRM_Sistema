@@ -86,7 +86,7 @@ interface DashboardPayload {
 }
 
 const formatCurrency = (value: number | string) =>
-  new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(value || 0));
+  new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(value ?? 0));
 
 const formatDate = (value?: string | null) => {
   if (!value) return "-";
@@ -96,7 +96,7 @@ const formatDate = (value?: string | null) => {
 };
 
 const getEstadoBadge = (estado: string) => {
-  const raw = (estado || "").toLowerCase();
+  const raw = (estado ?? "").toLowerCase();
   if (["pagada", "pagado"].includes(raw)) return "bg-emerald-100 text-emerald-700 uppercase";
   if (["parcial", "pago parcial", "parcialmente pagada"].includes(raw))
     return "bg-orange-100 text-orange-700 border-orange-200 uppercase";
@@ -107,6 +107,7 @@ const getEstadoBadge = (estado: string) => {
   return "bg-slate-100 text-slate-700 uppercase";
 };
 
+// eslint-disable-next-line complexity
 export default function FacturasDashboardPage() {
   const [data, setData] = React.useState<DashboardPayload | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -209,7 +210,7 @@ export default function FacturasDashboardPage() {
           <CardContent className="p-0">
             {loading ? (
               <div className="text-muted-foreground py-10 text-center">Cargando...</div>
-            ) : (data?.topDeudores?.length || 0) === 0 ? (
+            ) : (data?.topDeudores?.length ?? 0) === 0 ? (
               <div className="text-muted-foreground py-10 text-center">Sin deuda pendiente registrada.</div>
             ) : (
               <Table>
@@ -236,7 +237,7 @@ export default function FacturasDashboardPage() {
                             href={`/dashboard/facturas/pendientes?clienteId=${item.clienteId}`}
                             className="hover:text-primary text-sm font-bold transition-colors hover:underline"
                           >
-                            {item.clienteNombre} {item.clienteApellidos || ""}
+                            {item.clienteNombre} {item.clienteApellidos ?? ""}
                           </Link>
                         </TableCell>
                         <TableCell className="py-3">
@@ -289,27 +290,27 @@ export default function FacturasDashboardPage() {
             <AlertLine
               icon={<AlertTriangle className="h-4 w-4 text-amber-600" />}
               label="Facturas vencidas"
-              value={`${data?.vencidas.length || 0}`}
+              value={`${data?.vencidas?.length ?? 0}`}
             />
             <AlertLine
               icon={<TrendingUp className="h-4 w-4 text-rose-600" />}
               label="Total Pendientes"
-              value={`${resumen?.facturasPendientes || 0}`}
+              value={`${resumen?.facturasPendientes ?? 0}`}
             />
             <AlertLine
               icon={<TrendingUp className="h-4 w-4 text-orange-600" />}
               label="Pagos parciales"
-              value={`${resumen?.facturasParciales || 0}`}
+              value={`${resumen?.facturasParciales ?? 0}`}
             />
             <AlertLine
               icon={<ArrowUpRight className="h-4 w-4 text-blue-600" />}
               label="Facturas adelantadas"
-              value={`${resumen?.facturasAdelantadas || 0}`}
+              value={`${resumen?.facturasAdelantadas ?? 0}`}
             />
             <AlertLine
               icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
               label="Anuladas/Canceladas"
-              value={`${resumen?.facturasAnuladas || 0}`}
+              value={`${resumen?.facturasAnuladas ?? 0}`}
             />
             <div className="pt-2">
               <Link
@@ -341,7 +342,7 @@ export default function FacturasDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data?.recientes || []).map((f) => (
+                  {(data?.recientes ?? []).map((f) => (
                     <tr key={f.id} className="border-b last:border-0">
                       <td className="py-2 pr-3 font-semibold">{f.numeroFactura}</td>
                       <td className="py-2 pr-3">
@@ -349,7 +350,7 @@ export default function FacturasDashboardPage() {
                           href={`/dashboard/facturas/pendientes?clienteId=${f.clienteId}`}
                           className="hover:text-primary transition-colors hover:underline"
                         >
-                          {f.clienteNombre} {f.clienteApellidos || ""}
+                          {f.clienteNombre} {f.clienteApellidos ?? ""}
                         </Link>
                       </td>
                       <td className="py-2 pr-3">{formatDate(f.fechaFactura)}</td>
@@ -382,7 +383,7 @@ export default function FacturasDashboardPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(data?.vencidas || []).map((f) => (
+                  {(data?.vencidas ?? []).map((f) => (
                     <tr key={f.id} className="border-b last:border-0">
                       <td className="py-2 pr-3 font-semibold">{f.numeroFactura}</td>
                       <td className="py-2 pr-3">
@@ -390,7 +391,7 @@ export default function FacturasDashboardPage() {
                           href={`/dashboard/facturas/pendientes?clienteId=${f.clienteId}`}
                           className="hover:text-primary transition-colors hover:underline"
                         >
-                          {f.clienteNombre} {f.clienteApellidos || ""}
+                          {f.clienteNombre} {f.clienteApellidos ?? ""}
                         </Link>
                       </td>
                       <td className="py-2 pr-3">{formatDate(f.fechaVencimiento)}</td>
