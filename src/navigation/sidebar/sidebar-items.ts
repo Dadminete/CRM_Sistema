@@ -203,11 +203,6 @@ export const sidebarItemsBase: NavGroup[] = [
             icon: "ArrowUpCircle",
           },
           {
-            title: "Pagos X Mes",
-            url: "/dashboard/contabilidad/pagos-mes",
-            icon: "CalendarCheck",
-          },
-          {
             title: "Traspasos",
             url: "/dashboard/contabilidad/traspasos",
             icon: "ArrowLeftRight",
@@ -325,16 +320,6 @@ export const sidebarItemsBase: NavGroup[] = [
         title: "Base De Datos",
         url: "/dashboard/database",
         icon: "Database",
-      },
-      {
-        title: "Chat",
-        url: "/chat",
-        icon: "MessageSquare",
-      },
-      {
-        title: "Calendar",
-        url: "/calendar",
-        icon: "Calendar",
       },
       {
         title: "Permisos",

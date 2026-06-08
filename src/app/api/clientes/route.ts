@@ -75,6 +75,12 @@ function parsePlanId(value: number | null | undefined): number | null {
   return value;
 }
 
+function parseBillingDay(value: number | null | undefined): number {
+  if (value == null) return 1;
+  if (!Number.isInteger(value) || value < 1 || value > 31) return 1;
+  return value;
+}
+
 async function generateNumeroContrato(tx: any): Promise<string> {
   const now = new Date();
   const year = now.getFullYear();
@@ -93,6 +99,7 @@ async function createClientSubscriptions(tx: any, input: CreateClienteInput, cli
   const planId = parsePlanId(input.planId);
   const uniqueServicioIds = Array.from(new Set((input.servicioIds ?? []).filter(Boolean)));
   const today = getDateOnly();
+  const diaFacturacion = parseBillingDay(input.diaFacturacion);
 
   if (!planId && uniqueServicioIds.length === 0) {
     return [] as string[];
@@ -143,7 +150,7 @@ async function createClientSubscriptions(tx: any, input: CreateClienteInput, cli
         precioMensual: selectedPlan.precio ?? "0",
         descuentoAplicado: "0",
         fechaProximoPago: today,
-        diaFacturacion: 1,
+        diaFacturacion,
         updatedAt: sql`CURRENT_TIMESTAMP`,
       })
       .returning({ id: suscripciones.id });
@@ -165,7 +172,7 @@ async function createClientSubscriptions(tx: any, input: CreateClienteInput, cli
         precioMensual: service.precioBase ?? "0",
         descuentoAplicado: "0",
         fechaProximoPago: today,
-        diaFacturacion: 1,
+        diaFacturacion,
         updatedAt: sql`CURRENT_TIMESTAMP`,
       })
       .returning({ id: suscripciones.id });
@@ -273,9 +280,28 @@ export const GET = withAuth(
         preciosPorCliente.set(row.cliente_id, row.precio_mensual);
       }
 
+      const fechasResult = await db.execute(sql`
+        SELECT
+          cliente_id,
+          MIN(fecha_proximo_pago)::text AS fecha_proximo_pago,
+          MIN(dia_facturacion)::int AS dia_facturacion
+        FROM suscripciones
+        WHERE estado = 'activo'
+        GROUP BY cliente_id
+      `);
+      const suscripcionInfoPorCliente = new Map<string, { fechaProximoPago: string | null; diaFacturacion: number | null }>();
+      for (const row of fechasResult.rows as { cliente_id: string; fecha_proximo_pago: string | null; dia_facturacion: number | null }[]) {
+        suscripcionInfoPorCliente.set(row.cliente_id, {
+          fechaProximoPago: row.fecha_proximo_pago,
+          diaFacturacion: row.dia_facturacion,
+        });
+      }
+
       const clientsWithPrices = allClients.map((c) => ({
         ...c,
         montoMensual: preciosPorCliente.get(c.id) ?? "0",
+        fechaProximoPago: suscripcionInfoPorCliente.get(c.id)?.fechaProximoPago ?? null,
+        diaFacturacion: suscripcionInfoPorCliente.get(c.id)?.diaFacturacion ?? null,
       }));
 
       const serializedClients = JSON.parse(

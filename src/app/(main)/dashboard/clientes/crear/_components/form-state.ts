@@ -17,6 +17,7 @@ export type FormState = {
   limiteCredito: string;
   diasCredito: string;
   descuentoCliente: string;
+  diaFacturacion: string;
   sexo: "M" | "F" | "";
   ocupacion: string;
   nombreEmpresa: string;
@@ -48,6 +49,7 @@ export const initialForm: FormState = {
   limiteCredito: "",
   diasCredito: "",
   descuentoCliente: "",
+  diaFacturacion: "1",
   sexo: "",
   ocupacion: "",
   nombreEmpresa: "",

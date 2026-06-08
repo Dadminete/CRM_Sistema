@@ -42,6 +42,7 @@ interface FormData {
   limiteCredito: string;
   diasCredito: string;
   descuentoCliente: string;
+  diaFacturacion: string;
   sexo: string;
   ocupacion: string;
   nombreEmpresa: string;
@@ -460,6 +461,23 @@ export function ClientEditModal({
                       id="limiteCredito"
                       value={formData.limiteCredito}
                       onChange={(e) => setFormData({ ...formData, limiteCredito: e.target.value })}
+                      className="border-muted-foreground/20 h-10"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label
+                      htmlFor="diaFacturacion"
+                      className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase"
+                    >
+                      Día de facturación
+                    </Label>
+                    <Input
+                      id="diaFacturacion"
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={formData.diaFacturacion}
+                      onChange={(e) => setFormData({ ...formData, diaFacturacion: e.target.value })}
                       className="border-muted-foreground/20 h-10"
                     />
                   </div>

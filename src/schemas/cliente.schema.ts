@@ -61,6 +61,7 @@ export const createClienteSchema = z.object({
     .optional()
     .nullable()
     .transform((val) => (val ? val : null)),
+  diaFacturacion: z.number().int("Día de facturación inválido").min(1).max(31).optional().nullable(),
   fechaNacimiento: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Formato de fecha inválido (YYYY-MM-DD)")

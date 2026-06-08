@@ -252,10 +252,24 @@ function parseCoordinates(coordinates: string | null | undefined): { lat: string
   return { lat: rawLat, lng: rawLng };
 }
 
+function parseDateOnly(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = value.trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? trimmed : null;
+}
+
+function parseBillingDay(value: unknown): number | null {
+  if (value === null || value === undefined) return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 31) return null;
+  return parsed;
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();
+    const diaFacturacion = parseBillingDay(body.diaFacturacion);
 
     const coords = body.coordenadas ? parseCoordinates(body.coordenadas) : null;
 
@@ -327,6 +341,32 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
           diaFacturacion: 1,
           updatedAt: sql`CURRENT_TIMESTAMP`,
         });
+      }
+    }
+
+    if (body.diaFacturacion !== undefined) {
+      const [activeSub] = await db
+        .select({ id: suscripciones.id })
+        .from(suscripciones)
+        .where(and(eq(suscripciones.clienteId, id), eq(suscripciones.estado, "activo")))
+        .limit(1);
+
+      if (activeSub) {
+        await db
+          .update(suscripciones)
+          .set({
+            diaFacturacion: diaFacturacion ?? 1,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(and(eq(suscripciones.clienteId, id), eq(suscripciones.estado, "activo")));
+      } else {
+        await db
+          .update(suscripciones)
+          .set({
+            diaFacturacion: diaFacturacion ?? 1,
+            updatedAt: sql`CURRENT_TIMESTAMP`,
+          })
+          .where(eq(suscripciones.clienteId, id));
       }
     }
 

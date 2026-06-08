@@ -65,6 +65,8 @@ interface Cliente {
   createdAt: string;
   tieneSuscripcionActiva?: boolean;
   montoMensual?: string | number;
+  fechaProximoPago?: string | null;
+  diaFacturacion?: number | null;
 }
 
 interface Factura {
@@ -126,6 +128,7 @@ export default function ClientesListPage() {
     limiteCredito: "0",
     diasCredito: "0",
     descuentoCliente: "0",
+    diaFacturacion: "1",
     sexo: "",
     ocupacion: "",
     nombreEmpresa: "",
@@ -247,6 +250,7 @@ export default function ClientesListPage() {
       limiteCredito: (cliente.limiteCrediticio ?? cliente.limite_crediticio)?.toString() || "0",
       diasCredito: (cliente.diasCredito ?? cliente.dias_credito)?.toString() || "0",
       descuentoCliente: (cliente.descuentoPorcentaje ?? cliente.descuento_porcentaje)?.toString() || "0",
+      diaFacturacion: (getVal("diaFacturacion", "dia_facturacion") || "1").toString(),
       sexo: cliente.sexo === "MASCULINO" ? "M" : cliente.sexo === "FEMENINO" ? "F" : cliente.sexo || "",
       ocupacion: "",
       nombreEmpresa: "",
@@ -285,6 +289,7 @@ export default function ClientesListPage() {
       limiteCrediticio: formData.limiteCredito || "0",
       diasCredito: parseInt(formData.diasCredito) || 0,
       descuentoPorcentaje: formData.descuentoCliente || "0",
+      diaFacturacion: parseInt(formData.diaFacturacion) || 1,
     };
 
     try {

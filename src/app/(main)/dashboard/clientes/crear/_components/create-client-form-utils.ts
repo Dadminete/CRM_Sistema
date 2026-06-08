@@ -53,6 +53,7 @@ export function buildCreateClientPayload(formData: FormState) {
     limiteCredito: toNullable(formData.limiteCredito),
     diasCredito: formData.diasCredito.trim().length ? Number(formData.diasCredito) : null,
     descuentoCliente: toNullable(formData.descuentoCliente),
+    diaFacturacion: formData.diaFacturacion.trim().length ? Number(formData.diaFacturacion) : null,
     sexo: formData.sexo.length ? formData.sexo : null,
     ocupacion: toNullable(formData.ocupacion),
     nombreEmpresa: toNullable(formData.nombreEmpresa),

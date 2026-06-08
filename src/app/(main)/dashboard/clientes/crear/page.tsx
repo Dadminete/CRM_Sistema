@@ -319,6 +319,24 @@ export default function CrearClientePage() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label>Día de facturación</Label>
+                <Select value={formData.diaFacturacion} onValueChange={(value) => setField("diaFacturacion", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecciona un día" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 31 }, (_, index) => {
+                      const day = String(index + 1);
+                      return (
+                        <SelectItem key={day} value={day}>
+                          Día {day}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>

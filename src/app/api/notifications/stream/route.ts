@@ -13,6 +13,18 @@ export const GET = withAuth(
     const stream = new ReadableStream({
       start(controller) {
         let closed = false;
+        let countInterval: ReturnType<typeof setInterval> | null = null;
+        let keepAliveInterval: ReturnType<typeof setInterval> | null = null;
+
+        const enqueue = (payload: string) => {
+          if (closed) return;
+
+          try {
+            controller.enqueue(encoder.encode(payload));
+          } catch {
+            closeStream();
+          }
+        };
 
         const sendCount = async () => {
           if (closed) return;
@@ -25,30 +37,35 @@ export const GET = withAuth(
             `);
 
             const count = (result as any)?.count || 0;
-              controller.enqueue(encoder.encode(`event: notification\ndata: ${JSON.stringify({ count })}\n\n`));
+            enqueue(`event: notification\ndata: ${JSON.stringify({ count })}\n\n`);
           } catch {
-              controller.enqueue(encoder.encode(`event: notification\ndata: ${JSON.stringify({ count: 0 })}\n\n`));
+            if (!closed) {
+              enqueue(`event: notification\ndata: ${JSON.stringify({ count: 0 })}\n\n`);
+            }
           }
         };
 
         const sendKeepAlive = () => {
-          if (!closed) {
-            controller.enqueue(encoder.encode(": keep-alive\n\n"));
-          }
+          enqueue(": keep-alive\n\n");
         };
 
         const closeStream = () => {
           if (closed) return;
           closed = true;
-          clearInterval(countInterval);
-          clearInterval(keepAliveInterval);
-          controller.close();
+          if (countInterval) clearInterval(countInterval);
+          if (keepAliveInterval) clearInterval(keepAliveInterval);
+
+          try {
+            controller.close();
+          } catch {
+            // Stream already closed by the runtime.
+          }
         };
 
         sendCount();
 
-        const countInterval = setInterval(sendCount, 5000);
-        const keepAliveInterval = setInterval(sendKeepAlive, 15000);
+        countInterval = setInterval(sendCount, 5000);
+        keepAliveInterval = setInterval(sendKeepAlive, 15000);
 
         req.signal.addEventListener("abort", closeStream);
       },
