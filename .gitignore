@@ -30,6 +30,10 @@ yarn-error.log*
 .env
 .env*.local
 
+# local uploads fallback (dev only)
+public/uploads/*
+!public/uploads/.gitkeep
+
 # vercel
 .vercel
 
