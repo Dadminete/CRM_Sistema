@@ -1,23 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import {
-  Database,
-  Download,
-  RotateCcw,
-  Trash2,
-  Play,
-  Clock,
-  ShieldCheck,
-  AlertTriangle,
-  RefreshCw,
-  Search,
-  Terminal,
-  CheckCircle2,
-} from "lucide-react";
+import { Database, Download, RotateCcw, Trash2, Play, ShieldCheck, Search, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { SyncLogModal } from "@/components/database/sync-log-modal";
@@ -27,16 +14,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
+import { BackupProgressPanel, type BackupProgressPoint, type BackupRunInfo } from "./_components/backup-progress-panel";
+import { DatabaseSummaryCards } from "./_components/database-summary-cards";
+
 interface Backup {
+  id: string;
   name: string;
   size: number;
   createdAt: string;
+  provider?: "local" | "neon-snapshot";
+  actions?: {
+    download: boolean;
+    restore: boolean;
+    delete: boolean;
+  };
 }
 
 export default function DatabasePage() {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [config, setConfig] = useState<{
     backupPath: string;
+    backupMode?: "local" | "neon-snapshot";
     localStatus?: string;
     cloudStatus?: string;
     localUrl?: string;
@@ -50,6 +48,75 @@ export default function DatabasePage() {
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
   const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
   const [showSyncModal, setShowSyncModal] = useState(false);
+  const [backupProgress, setBackupProgress] = useState(0);
+  const [backupStage, setBackupStage] = useState("Esperando ejecución");
+  const [backupElapsedSeconds, setBackupElapsedSeconds] = useState(0);
+  const [backupTimeline, setBackupTimeline] = useState<BackupProgressPoint[]>([]);
+  const [backupRunInfo, setBackupRunInfo] = useState<BackupRunInfo>({ status: "idle" });
+  const backupTickerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const backupStartedAtRef = useRef<number>(0);
+
+  const getErrorMessage = (error: unknown) => (error instanceof Error ? error.message : "Error desconocido");
+
+  const pushProgressPoint = (percent: number) => {
+    const label = format(new Date(), "HH:mm:ss");
+    setBackupTimeline((prev) => [...prev.slice(-24), { time: label, percent }]);
+  };
+
+  const getBackupStage = (percent: number) => {
+    if (percent < 20) return "Validando entorno";
+    if (percent < 45) return "Conectando a la base de datos";
+    if (percent < 80) return "Generando respaldo";
+    if (percent < 100) return "Finalizando proceso";
+    return "Completado";
+  };
+
+  const stopBackupTicker = () => {
+    if (backupTickerRef.current) {
+      clearInterval(backupTickerRef.current);
+      backupTickerRef.current = null;
+    }
+  };
+
+  const startBackupTicker = () => {
+    stopBackupTicker();
+    backupTickerRef.current = setInterval(() => {
+      setBackupElapsedSeconds(Math.max(0, Math.floor((Date.now() - backupStartedAtRef.current) / 1000)));
+      setBackupProgress((prev) => {
+        const next = Math.min(92, prev + Math.max(1, Math.floor((96 - prev) / 8)));
+        setBackupStage(getBackupStage(next));
+        pushProgressPoint(next);
+        return next;
+      });
+    }, 900);
+  };
+
+  const processSyncChunk = (chunk: string) => {
+    const lines = chunk.split("\n\n");
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) {
+        continue;
+      }
+
+      try {
+        const data = JSON.parse(line.slice(6)) as { message?: string };
+        const message = data.message ?? "";
+        if (!message) {
+          continue;
+        }
+
+        setSyncLogs((prev) => [...prev, message]);
+        if (message.includes("[SUCCESS]")) {
+          setSyncStatus("success");
+        }
+        if (message.includes("[ERROR]") || message.includes("[CRITICAL]")) {
+          setSyncStatus("error");
+        }
+      } catch {
+        // Ignore partial JSON chunks and wait for next event piece.
+      }
+    }
+  };
 
   const fetchBackups = async () => {
     setIsLoading(true);
@@ -62,7 +129,7 @@ export default function DatabasePage() {
         console.error("Invalid backups data:", data);
         setBackups([]);
       }
-    } catch (error) {
+    } catch {
       toast.error("Error al cargar los respaldos");
     } finally {
       setIsLoading(false);
@@ -82,32 +149,94 @@ export default function DatabasePage() {
   useEffect(() => {
     fetchBackups();
     fetchConfig();
+    return () => {
+      stopBackupTicker();
+    };
   }, []);
 
+  // eslint-disable-next-line complexity
   const handleCreateBackup = async () => {
+    const startedAt = new Date();
+    backupStartedAtRef.current = startedAt.getTime();
+
+    setBackupElapsedSeconds(0);
+    setBackupProgress(8);
+    setBackupStage("Iniciando respaldo");
+    setBackupTimeline([{ time: format(startedAt, "HH:mm:ss"), percent: 8 }]);
+    setBackupRunInfo({
+      status: "running",
+      startedAt: startedAt.toISOString(),
+      mode: config?.backupMode ?? "local",
+    });
+
     setIsBackingUp(true);
+    startBackupTicker();
     toast.info("Iniciando respaldo de base de datos...");
     try {
       const res = await fetch("/api/database/backup", { method: "POST" });
       const data = await res.json();
       if (data.success) {
+        stopBackupTicker();
+        const finishedAt = new Date();
+        const payload = (data.data ?? {}) as {
+          provider?: string;
+          snapshotId?: string;
+          snapshotName?: string;
+          fileName?: string;
+        };
+
+        setBackupProgress(100);
+        setBackupStage("Completado");
+        setBackupElapsedSeconds(Math.max(0, Math.floor((finishedAt.getTime() - startedAt.getTime()) / 1000)));
+        pushProgressPoint(100);
+        setBackupRunInfo({
+          status: "success",
+          startedAt: startedAt.toISOString(),
+          finishedAt: finishedAt.toISOString(),
+          durationSeconds: Math.max(0, Math.floor((finishedAt.getTime() - startedAt.getTime()) / 1000)),
+          provider: payload.provider ?? config?.backupMode ?? "local",
+          mode: config?.backupMode ?? "local",
+          snapshotId: payload.snapshotId,
+          snapshotName: payload.snapshotName,
+          fileName: payload.fileName,
+        });
         toast.success("Respaldo creado con éxito");
         fetchBackups();
       } else {
-        throw new Error(data.error || "Error desconocido");
+        throw new Error(data.error ?? "Error desconocido");
       }
-    } catch (error: any) {
-      toast.error(`Error al crear respaldo: ${error.message}`);
+    } catch (error: unknown) {
+      stopBackupTicker();
+      const message = getErrorMessage(error);
+      setBackupStage("Error en respaldo");
+      setBackupRunInfo((prev) => ({
+        ...prev,
+        status: "error",
+        finishedAt: new Date().toISOString(),
+        error: message,
+      }));
+      pushProgressPoint(Math.max(backupProgress, 15));
+      toast.error(`Error al crear respaldo: ${getErrorMessage(error)}`);
     } finally {
       setIsBackingUp(false);
     }
   };
 
-  const handleDownload = (fileName: string) => {
-    window.open(`/api/database/download?fileName=${encodeURIComponent(fileName)}`, "_blank");
+  const handleDownload = (backup: Backup) => {
+    if (backup.actions?.download === false) {
+      toast.info("Los snapshots de Neon no se descargan como archivo .sql desde este panel.");
+      return;
+    }
+    window.open(`/api/database/download?fileName=${encodeURIComponent(backup.name)}`, "_blank");
   };
 
-  const handleRestore = async (fileName: string) => {
+  const handleRestore = async (backup: Backup) => {
+    if (backup.actions?.restore === false) {
+      toast.info("La restauración de snapshots Neon se gestiona desde Neon Console.");
+      return;
+    }
+
+    const fileName = backup.name;
     if (
       !confirm(
         `¿Estás seguro de que deseas restaurar el respaldo ${fileName}? Esta acción sobrescribirá los datos actuales.`,
@@ -126,30 +255,35 @@ export default function DatabasePage() {
         toast.success("Restauración completada con éxito");
         fetchBackups(); // Refresh the list after restore
       } else {
-        throw new Error(data.error || "Error desconocido");
+        throw new Error(data.error ?? "Error desconocido");
       }
-    } catch (error: any) {
-      toast.error(`Error en la restauración: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error en la restauración: ${getErrorMessage(error)}`);
     }
   };
 
-  const handleDelete = async (fileName: string) => {
+  const handleDelete = async (backup: Backup) => {
+    if (backup.actions?.delete === false) {
+      toast.info("Este respaldo no se puede eliminar desde este panel.");
+      return;
+    }
+
     if (!confirm("¿Estás seguro de que deseas eliminar este respaldo?")) return;
 
     try {
       const res = await fetch("/api/database/restore", {
         method: "POST",
-        body: JSON.stringify({ action: "delete", fileName }),
+        body: JSON.stringify({ action: "delete", fileName: backup.name, backupId: backup.id }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success("Respaldo eliminado");
         fetchBackups();
       } else {
-        throw new Error(data.error || "Error al eliminar");
+        throw new Error(data.error ?? "Error al eliminar");
       }
-    } catch (error: any) {
-      toast.error(`Error: ${error.message}`);
+    } catch (error: unknown) {
+      toast.error(`Error: ${getErrorMessage(error)}`);
     }
   };
 
@@ -179,24 +313,11 @@ export default function DatabasePage() {
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        // Handle SSE chunks: data: {...}\n\n
-        const lines = chunk.split("\n\n");
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              setSyncLogs((prev) => [...prev, data.message]);
-              if (data.message.includes("[SUCCESS]")) setSyncStatus("success");
-              if (data.message.includes("[ERROR]") || data.message.includes("[CRITICAL]")) setSyncStatus("error");
-            } catch (e) {
-              // Ignore partial JSON
-            }
-          }
-        }
+        processSyncChunk(chunk);
       }
       fetchConfig();
-    } catch (error: any) {
-      setSyncLogs((prev) => [...prev, `[CRITICAL] Error de red: ${error.message}`]);
+    } catch (error: unknown) {
+      setSyncLogs((prev) => [...prev, `[CRITICAL] Error de red: ${getErrorMessage(error)}`]);
       setSyncStatus("error");
     } finally {
       setIsSyncing(false);
@@ -204,6 +325,7 @@ export default function DatabasePage() {
   };
 
   const filteredBackups = backups.filter((b) => b.name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const showBackupProgress = isBackingUp || backupRunInfo.status !== "idle";
 
   return (
     <div className="flex flex-col gap-6 p-2">
@@ -222,101 +344,23 @@ export default function DatabasePage() {
         </Button>
       </div>
 
-      {/* Seccion de Resumen */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Card Local DB */}
-        <Card
-          className={`border-l-4 shadow-sm ${config?.localStatus === "online" ? "border-l-green-500" : "border-l-red-500"}`}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Base Local (Principal)</CardTitle>
-            <ShieldCheck
-              className={`h-4 w-4 ${config?.localStatus === "online" ? "text-green-500" : "text-red-500"}`}
-            />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${config?.localStatus === "online" ? "text-green-600" : "text-red-600"}`}
-            >
-              {config?.localStatus === "online" ? "Conectado" : "Error"}
-            </div>
-            <p className="text-muted-foreground text-xs">{config?.localUrl || "PostgreSQL 127.0.0.1"}</p>
-          </CardContent>
-        </Card>
+      {showBackupProgress && (
+        <BackupProgressPanel
+          backupStage={backupStage}
+          backupProgress={backupProgress}
+          backupElapsedSeconds={backupElapsedSeconds}
+          backupTimeline={backupTimeline}
+          backupRunInfo={backupRunInfo}
+        />
+      )}
 
-        {/* Card Cloud Sync */}
-        <Card
-          className={`border-l-4 shadow-sm ${config?.cloudStatus === "online" ? "border-l-blue-500" : "border-l-amber-500"}`}
-        >
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Sincronización Nube</CardTitle>
-            <RefreshCw className={`h-4 w-4 ${config?.cloudStatus === "online" ? "text-blue-500" : "text-amber-500"}`} />
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-bold ${config?.cloudStatus === "online" ? "text-blue-600" : "text-amber-600"}`}
-            >
-              {config?.cloudStatus === "online" ? "Sincronizado" : "Offline"}
-            </div>
-            <div className="mt-1 flex items-center justify-between gap-1">
-              <div className="flex flex-col">
-                <p className="text-muted-foreground text-[10px] font-semibold uppercase">
-                  {config?.cloudUrl || "Neon DB"}
-                </p>
-                {config?.pendingSyncCount && config.pendingSyncCount > 0 ? (
-                  <Badge variant="destructive" className="h-4 animate-pulse px-1 text-[9px]">
-                    {config.pendingSyncCount} cambios pendientes
-                  </Badge>
-                ) : (
-                  <p className="flex items-center gap-1 text-[10px] text-green-600">
-                    <CheckCircle2 className="h-3 w-3" /> Al día
-                  </p>
-                )}
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleSyncCloud}
-                disabled={isSyncing || config?.localStatus !== "online"}
-                className="h-7 gap-1 px-2 text-[10px] hover:bg-blue-100 hover:text-blue-700"
-              >
-                {isSyncing ? (
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Download className="h-3 w-3 rotate-180" />
-                )}
-                Sincronizar ahora
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-primary border-l-4 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Respaldos</CardTitle>
-            <Database className="text-primary h-4 w-4" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{backups.length}</div>
-            <p className="text-muted-foreground text-xs">
-              Archivos en storage local {config?.backupPath ? `(${config.backupPath})` : ""}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-l-4 border-l-amber-500 shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Último Respaldo</CardTitle>
-            <Clock className="h-4 w-4 text-amber-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="truncate text-xl font-bold">
-              {backups[0] ? format(new Date(backups[0].createdAt), "dd MMM, HH:mm", { locale: es }) : "N/A"}
-            </div>
-            <p className="text-muted-foreground text-xs">Protección de datos local</p>
-          </CardContent>
-        </Card>
-      </div>
+      <DatabaseSummaryCards
+        config={config}
+        backupsCount={backups.length}
+        latestBackupAt={backups[0]?.createdAt}
+        isSyncing={isSyncing}
+        onSyncCloud={handleSyncCloud}
+      />
 
       {/* Tabla de Historial */}
       <Card className="ring-border/60 border-none shadow-md ring-1">
@@ -370,19 +414,29 @@ export default function DatabasePage() {
                       <TableCell>{format(new Date(backup.createdAt), "PPP p", { locale: es })}</TableCell>
                       <TableCell>{formatSize(backup.size)}</TableCell>
                       <TableCell>
-                        <Badge
-                          variant="outline"
-                          className="border-green-200 bg-green-100 text-green-700 hover:bg-green-100"
-                        >
-                          Listo
-                        </Badge>
+                        {backup.provider === "neon-snapshot" ? (
+                          <Badge
+                            variant="outline"
+                            className="border-blue-200 bg-blue-100 text-blue-700 hover:bg-blue-100"
+                          >
+                            Snapshot Neon
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="border-green-200 bg-green-100 text-green-700 hover:bg-green-100"
+                          >
+                            Listo
+                          </Badge>
+                        )}
                       </TableCell>
                       <TableCell className="flex justify-end gap-2 text-right">
                         <Button
                           variant="ghost"
                           size="icon"
                           className="text-primary hover:text-primary hover:bg-primary/10 h-8 w-8"
-                          onClick={() => handleDownload(backup.name)}
+                          onClick={() => handleDownload(backup)}
+                          disabled={backup.actions?.download === false}
                           title="Descargar"
                         >
                           <Download className="h-4 w-4" />
@@ -391,7 +445,8 @@ export default function DatabasePage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-amber-600 hover:bg-amber-100 hover:text-amber-600"
-                          onClick={() => handleRestore(backup.name)}
+                          onClick={() => handleRestore(backup)}
+                          disabled={backup.actions?.restore === false}
                           title="Restaurar"
                         >
                           <RotateCcw className="h-4 w-4" />
@@ -400,7 +455,8 @@ export default function DatabasePage() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-red-600 hover:bg-red-100 hover:text-red-600"
-                          onClick={() => handleDelete(backup.name)}
+                          onClick={() => handleDelete(backup)}
+                          disabled={backup.actions?.delete === false}
                           title="Eliminar"
                         >
                           <Trash2 className="h-4 w-4" />
@@ -418,8 +474,10 @@ export default function DatabasePage() {
       <div className="bg-primary/5 border-primary/20 flex items-center gap-4 rounded-lg border p-4 text-sm opacity-80">
         <ShieldCheck className="text-primary h-5 w-5 shrink-0" />
         <p>
-          <strong>Seguridad:</strong> Los respaldos se guardan en local para mayor privacidad. Se recomienda descargar
-          copias importantes de forma periódica.
+          <strong>Seguridad:</strong>{" "}
+          {config?.backupMode === "neon-snapshot"
+            ? "En Vercel, los backups se crean como snapshots de Neon. Para restaurar snapshots, usa Neon Console."
+            : "Los respaldos se guardan en local para mayor privacidad. Se recomienda descargar copias importantes de forma periódica."}
         </p>
       </div>
       <SyncLogModal

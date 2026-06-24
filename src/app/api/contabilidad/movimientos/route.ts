@@ -1,4 +1,4 @@
-import { eq, desc, and, sql, ne, count } from "drizzle-orm";
+import { and, count, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import {
@@ -28,7 +28,6 @@ function calcEstado(montoOriginal: number, montoPendiente: number) {
 }
 
 async function applyCuentaPorPagarPayment(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   tx: any,
   {
     cuentaPorPagarId,
@@ -89,7 +88,10 @@ async function applyCuentaPorPagarPayment(
     .where(eq(cuentasPorPagar.id, cuentaPorPagarId));
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isBankMovement(metodo: string | null | undefined, cuentaBancariaId: string | null | undefined) {
+  return metodo !== "efectivo" && !!cuentaBancariaId;
+}
+
 async function revertCuentaPorPagarPaymentByMovement(tx: any, movementId: string) {
   const pagos = await tx
     .select({
@@ -141,10 +143,17 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const tipo = searchParams.get("tipo") ?? "gasto";
     const excludeTraspasos = searchParams.get("excludeTraspasos") !== "false";
-    const limit = Math.min(parseInt(searchParams.get("limit") ?? "100", 10), 500);
-    const offset = parseInt(searchParams.get("offset") ?? "0", 10);
+    const page = Math.max(parseInt(searchParams.get("page") ?? "1", 10), 1);
+    const limit = Math.min(Math.max(parseInt(searchParams.get("limit") ?? "10", 10), 1), 100);
+    const rawOffset = parseInt(searchParams.get("offset") ?? "0", 10);
+    const offset = Number.isNaN(rawOffset) ? (page - 1) * limit : Math.max(rawOffset, 0);
     const cajaId = searchParams.get("cajaId");
     const cuentaBancariaId = searchParams.get("cuentaBancariaId");
+    const categoriaId = searchParams.get("categoriaId");
+    const metodo = searchParams.get("metodo");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+    const search = (searchParams.get("search") ?? "").trim();
 
     const traspasoCat = await db
       .select({ id: categoriasCuentas.id })
@@ -170,13 +179,29 @@ export async function GET(req: Request) {
 
     if (cajaId) baseFilters.push(eq(movimientosContables.cajaId, cajaId));
     if (cuentaBancariaId) baseFilters.push(eq(movimientosContables.cuentaBancariaId, cuentaBancariaId));
+    if (categoriaId) baseFilters.push(eq(movimientosContables.categoriaId, categoriaId));
+    if (metodo) baseFilters.push(eq(movimientosContables.metodo, metodo));
+    if (startDate) baseFilters.push(gte(movimientosContables.fecha, `${startDate}T00:00:00.000Z`));
+    if (endDate) baseFilters.push(lte(movimientosContables.fecha, `${endDate}T23:59:59.999Z`));
+
+    const searchFilter = search
+      ? or(
+          ilike(categoriasCuentas.nombre, `%${search}%`),
+          ilike(categoriasCuentas.codigo, `%${search}%`),
+          ilike(movimientosContables.descripcion, `%${search}%`),
+          sql`CAST(${movimientosContables.monto} AS TEXT) ILIKE ${`%${search}%`}`,
+        )
+      : undefined;
+
+    const whereClause = searchFilter ? and(...baseFilters, searchFilter) : and(...baseFilters);
 
     // Run count and data queries in parallel
     const [countResult, movimientos] = await Promise.all([
       db
         .select({ total: count() })
         .from(movimientosContables)
-        .where(and(...baseFilters)),
+        .leftJoin(categoriasCuentas, eq(movimientosContables.categoriaId, categoriasCuentas.id))
+        .where(whereClause),
       db
         .select({
           id: movimientosContables.id,
@@ -203,15 +228,28 @@ export async function GET(req: Request) {
         .leftJoin(banks, eq(movimientosContables.bankId, banks.id))
         .leftJoin(cuentasBancarias, eq(movimientosContables.cuentaBancariaId, cuentasBancarias.id))
         .leftJoin(cajas, eq(movimientosContables.cajaId, cajas.id))
-        .where(and(...baseFilters))
+        .where(whereClause)
         .orderBy(desc(movimientosContables.fecha))
         .limit(limit)
         .offset(offset),
     ]);
 
     const total = countResult[0]?.total ?? 0;
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
+    const currentPage = Math.floor(offset / limit) + 1;
 
-    return jsonResponse({ success: true, data: movimientos, total, limit, offset });
+    return jsonResponse({
+      success: true,
+      data: movimientos,
+      pagination: {
+        total,
+        page: currentPage,
+        limit,
+        totalPages,
+        hasPrevPage: currentPage > 1,
+        hasNextPage: currentPage < totalPages,
+      },
+    });
   } catch (error: unknown) {
     console.error("Error fetching movimientos:", error);
     return jsonResponse(
@@ -281,7 +319,7 @@ export async function POST(req: Request) {
       if (metodo === "efectivo" && cajaId) {
         const adjustment = tipo === "ingreso" ? Number(monto) : -Number(monto);
         await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${cajaId}`);
-      } else if (metodo === "banco" && cuentaBancariaId) {
+      } else if (isBankMovement(metodo, cuentaBancariaId)) {
         // If it's a bank movement, we update the associated accounting account
         const account = await tx
           .select({ id: cuentasBancarias.cuentaContableId })
@@ -378,7 +416,7 @@ export async function PUT(req: Request) {
       if (old.metodo === "efectivo" && old.cajaId) {
         const revertAmount = old.tipo === "ingreso" ? -Number(old.monto) : Number(old.monto);
         await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${revertAmount} WHERE id = ${old.cajaId}`);
-      } else if (old.metodo === "banco" && old.cuentaBancariaId) {
+      } else if (isBankMovement(old.metodo, old.cuentaBancariaId)) {
         const account = await tx
           .select({ id: cuentasBancarias.cuentaContableId })
           .from(cuentasBancarias)
@@ -421,7 +459,7 @@ export async function PUT(req: Request) {
       if (metodo === "efectivo" && cajaId) {
         const adjustment = tipo === "ingreso" ? Number(monto) : -Number(monto);
         await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${cajaId}`);
-      } else if (metodo === "banco" && cuentaBancariaId) {
+      } else if (isBankMovement(metodo, cuentaBancariaId)) {
         const account = await tx
           .select({ id: cuentasBancarias.cuentaContableId })
           .from(cuentasBancarias)
@@ -515,7 +553,7 @@ export async function DELETE(req: Request) {
           await tx.execute(
             sql`UPDATE cajas SET saldo_actual = saldo_actual + ${revertAmount} WHERE id = ${old.cajaId}`,
           );
-        } else if (old.metodo === "banco" && old.cuentaBancariaId) {
+        } else if (isBankMovement(old.metodo, old.cuentaBancariaId)) {
           const account = await tx
             .select({ id: cuentasBancarias.cuentaContableId })
             .from(cuentasBancarias)

@@ -1,9 +1,48 @@
 import { NextResponse } from "next/server";
 
-import { eq, asc, and, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { categoriasCuentas, banks, cuentasBancarias, cajas, cuentasPorPagar, proveedores } from "@/lib/db/schema";
+
+const ACCOUNT_TYPE_ALIASES: Record<string, string> = {
+  ACTIVO: "ACTIVO",
+  ACTIVOS: "ACTIVO",
+  PASIVO: "PASIVO",
+  PASIVOS: "PASIVO",
+  CAPITAL: "CAPITAL",
+  PATRIMONIO: "CAPITAL",
+  INGRESO: "INGRESOS",
+  INGRESOS: "INGRESOS",
+  COSTO: "COSTOS",
+  COSTOS: "COSTOS",
+  GASTO: "GASTOS",
+  GASTOS: "GASTOS",
+};
+
+function normalizeAccountType(rawType: string) {
+  const key = rawType
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+
+  return ACCOUNT_TYPE_ALIASES[key] ?? key;
+}
+
+function getTypeVariants(rawType: string) {
+  const normalized = normalizeAccountType(rawType);
+  const variants = new Set<string>([normalized, normalized.toLowerCase()]);
+
+  Object.entries(ACCOUNT_TYPE_ALIASES).forEach(([key, mapped]) => {
+    if (mapped === normalized) {
+      variants.add(key);
+      variants.add(key.toLowerCase());
+    }
+  });
+
+  return [...variants];
+}
 
 export async function GET(req: Request) {
   try {
@@ -16,15 +55,7 @@ export async function GET(req: Request) {
           .select()
           .from(categoriasCuentas)
           .where(
-            and(
-              eq(categoriasCuentas.activa, true),
-              // Match both lowercase and uppercase since DB may have either
-              or(
-                eq(categoriasCuentas.tipo, tipoCategoria),
-                eq(categoriasCuentas.tipo, tipoCategoria.toUpperCase()),
-                eq(categoriasCuentas.tipo, tipoCategoria.toLowerCase()),
-              ),
-            ),
+            and(eq(categoriasCuentas.activa, true), inArray(categoriasCuentas.tipo, getTypeVariants(tipoCategoria))),
           )
           .orderBy(asc(categoriasCuentas.codigo))
       : db

@@ -7,7 +7,7 @@ import { Lock, Unlock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const IDLE_TIMEOUT_MS = 80_000;
+const IDLE_TIMEOUT_MS = 300_000;
 const ACTIVITY_EVENTS: ReadonlyArray<keyof WindowEventMap> = [
   "mousemove",
   "mousedown",
@@ -35,14 +35,17 @@ export function SessionLockScreen({ children }: Readonly<{ children: ReactNode }
     }
   }, []);
 
-  const lockSession = useCallback((reason: LockReason) => {
-    clearTimer();
-    setLockReason(reason);
-    setPassword("");
-    setUnlockError(null);
-    setIsUnlocking(false);
-    setIsLocked(true);
-  }, [clearTimer]);
+  const lockSession = useCallback(
+    (reason: LockReason) => {
+      clearTimer();
+      setLockReason(reason);
+      setPassword("");
+      setUnlockError(null);
+      setIsUnlocking(false);
+      setIsLocked(true);
+    },
+    [clearTimer],
+  );
 
   const resetIdleTimer = useCallback(() => {
     if (isLocked) return;
@@ -75,7 +78,7 @@ export function SessionLockScreen({ children }: Readonly<{ children: ReactNode }
       const result = await response.json().catch(() => ({}));
 
       if (!response.ok || !result.success) {
-        setUnlockError(result.error || "No se pudo desbloquear la sesion");
+        setUnlockError(result.error ?? "No se pudo desbloquear la sesion");
         return;
       }
 
@@ -155,7 +158,7 @@ export function SessionLockScreen({ children }: Readonly<{ children: ReactNode }
                 <h2 className="text-lg font-semibold">Sesion bloqueada</h2>
                 <p className="text-muted-foreground text-sm">
                   {lockReason === "idle"
-                    ? "La app se bloqueo por inactividad (1 minuto 20 segundos)."
+                    ? "La app se bloqueo por inactividad (5 minutos)."
                     : "Bloqueaste la sesion manualmente."}
                 </p>
               </div>

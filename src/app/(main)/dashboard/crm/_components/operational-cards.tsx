@@ -1,3 +1,5 @@
+/* eslint-disable complexity */
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -67,7 +69,7 @@ export function OperationalCards() {
   const [loadingSales, setLoadingSales] = useState(true);
 
   useEffect(() => {
-    fetch("/api/crm/recent-clients")
+    fetch("/api/crm/recent-clients", { cache: "no-store" })
       .then((res) => res.json())
       .then((json) => {
         if (json.success) setRecentClients(json.data);
@@ -116,7 +118,7 @@ export function OperationalCards() {
         <CardHeader className="gap-3">
           <div className="flex items-center justify-between gap-3">
             <CardTitle>Ventas Papaleria</CardTitle>
-            <Tabs value={salesView} onValueChange={(value) => setSalesView(value as "monthly" | "biweekly") }>
+            <Tabs value={salesView} onValueChange={(value) => setSalesView(value as "monthly" | "biweekly")}>
               <TabsList className="h-8">
                 <TabsTrigger value="monthly" className="px-2 text-xs">
                   Mensual

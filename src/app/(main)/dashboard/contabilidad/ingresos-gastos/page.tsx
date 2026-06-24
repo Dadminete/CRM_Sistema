@@ -48,6 +48,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useDebounce } from "@/hooks/use-debounce";
 import { notifyFinanzasDataChanged } from "@/lib/finanzas-sync";
 import { cn } from "@/lib/utils";
 
@@ -108,6 +109,8 @@ const EMPTY_FORM = {
   pagoFijoId: "",
 };
 
+const PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
+
 // ─── Helpers ───
 const formatCurrency = (v: string | number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(v));
@@ -146,8 +149,9 @@ function IngresosGastosPageContent() {
   const [activeTab, setActiveTab] = useState<"gasto" | "ingreso">("gasto");
   const [movimientos, setMovimientos] = useState<Movimiento[]>([]);
   const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
-  const LIMIT = 100;
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [lookup, setLookup] = useState<LookupData>({
     categorias: [],
     bancos: [],
@@ -157,6 +161,11 @@ function IngresosGastosPageContent() {
   });
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearchTerm = useDebounce(searchTerm, 350);
+  const [filterCategoriaId, setFilterCategoriaId] = useState("");
+  const [filterMetodo, setFilterMetodo] = useState("");
+  const [filterStartDate, setFilterStartDate] = useState("");
+  const [filterEndDate, setFilterEndDate] = useState("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
@@ -166,15 +175,39 @@ function IngresosGastosPageContent() {
 
   // ─── Data fetching ───
   const fetchMovimientos = useCallback(
-    async (tipo: string, newOffset = 0, append = false) => {
+    async (tipo: string, targetPage = 1) => {
       setIsLoading(true);
       try {
-        const res = await fetch(`/api/contabilidad/movimientos?tipo=${tipo}&limit=${LIMIT}&offset=${newOffset}`);
+        const params = new URLSearchParams({
+          tipo,
+          page: String(targetPage),
+          limit: String(pageSize),
+        });
+
+        if (debouncedSearchTerm.trim()) {
+          params.set("search", debouncedSearchTerm.trim());
+        }
+        if (filterCategoriaId) {
+          params.set("categoriaId", filterCategoriaId);
+        }
+        if (filterMetodo) {
+          params.set("metodo", filterMetodo);
+        }
+        if (filterStartDate) {
+          params.set("startDate", filterStartDate);
+        }
+        if (filterEndDate) {
+          params.set("endDate", filterEndDate);
+        }
+
+        const res = await fetch(`/api/contabilidad/movimientos?${params.toString()}`);
         const data = await res.json();
         if (data.success) {
-          setMovimientos((prev) => (append ? [...prev, ...data.data] : data.data));
-          setTotal(data.total ?? 0);
-          setOffset(newOffset);
+          setMovimientos(data.data ?? []);
+          const pagination = data.pagination ?? {};
+          setTotal(Number(pagination.total ?? 0));
+          setPage(Number(pagination.page ?? targetPage));
+          setTotalPages(Number(pagination.totalPages ?? 1));
         } else {
           toast.error("Error al cargar movimientos");
         }
@@ -184,12 +217,12 @@ function IngresosGastosPageContent() {
         setIsLoading(false);
       }
     },
-    [LIMIT],
+    [debouncedSearchTerm, filterCategoriaId, filterMetodo, filterStartDate, filterEndDate, pageSize],
   );
 
   const fetchLookup = useCallback(async (tipoCategoria: string) => {
     try {
-      const res = await fetch(`/api/contabilidad/lookup?tipoCategoria=${tipoCategoria}`);
+      const res = await fetch(`/api/contabilidad/lookup?tipoCategoria=${tipoCategoria}`, { cache: "no-store" });
       const data = await res.json();
       if (data.success) {
         setLookup(data.data);
@@ -230,10 +263,7 @@ function IngresosGastosPageContent() {
   }, []);
 
   useEffect(() => {
-    setMovimientos([]);
-    setTotal(0);
-    setOffset(0);
-    fetchMovimientos(activeTab, 0, false);
+    fetchMovimientos(activeTab, 1);
     fetchLookup(activeTab);
     if (activeTab === "gasto") {
       fetchGastosFijos();
@@ -252,7 +282,7 @@ function IngresosGastosPageContent() {
         console.error(err);
         checkSession();
       });
-  }, [activeTab, fetchMovimientos, fetchLookup, checkSession, fetchGastosFijos]);
+  }, [activeTab, debouncedSearchTerm, fetchMovimientos, fetchLookup, checkSession, fetchGastosFijos]);
 
   // Pre-poblar si viene facturaId
   useEffect(() => {
@@ -290,8 +320,11 @@ function IngresosGastosPageContent() {
   // ─── Handlers ───
   const handleTabChange = (val: string) => {
     setActiveTab(val as "gasto" | "ingreso");
-    setSearchTerm("");
-    setOffset(0);
+    setPage(1);
+    setFilterCategoriaId("");
+    setFilterMetodo("");
+    setFilterStartDate("");
+    setFilterEndDate("");
   };
 
   const openNew = () => {
@@ -320,6 +353,21 @@ function IngresosGastosPageContent() {
   const handleSave = async () => {
     if (!form.monto || !form.categoriaId || !form.metodo) {
       toast.error("Completa los campos requeridos: Monto, Categoría y Método de pago");
+      return;
+    }
+
+    if (Number(form.monto) <= 0) {
+      toast.error("El monto debe ser mayor que cero");
+      return;
+    }
+
+    if (form.metodo === "efectivo" && !form.cajaId) {
+      toast.error("Debes seleccionar una caja para pagos en efectivo");
+      return;
+    }
+
+    if (form.metodo !== "efectivo" && (!form.bankId || !form.cuentaBancariaId)) {
+      toast.error("Debes seleccionar banco y cuenta bancaria para movimientos no efectivos");
       return;
     }
 
@@ -380,9 +428,8 @@ function IngresosGastosPageContent() {
         toast.success(editingId ? "Movimiento actualizado" : "Movimiento registrado");
         notifyFinanzasDataChanged();
         setIsDialogOpen(false);
-        // Reset to first page after saving
-        setOffset(0);
-        fetchMovimientos(activeTab, 0, false);
+        setPage(1);
+        fetchMovimientos(activeTab, 1);
       } else {
         toast.error("Error: " + data.error);
       }
@@ -399,8 +446,8 @@ function IngresosGastosPageContent() {
       if (data.success) {
         toast.success("Movimiento eliminado");
         notifyFinanzasDataChanged();
-        setOffset(0);
-        fetchMovimientos(activeTab, 0, false);
+        setPage(1);
+        fetchMovimientos(activeTab, 1);
       } else {
         toast.error("Error: " + data.error);
       }
@@ -427,6 +474,16 @@ function IngresosGastosPageContent() {
     });
   };
 
+  useEffect(() => {
+    if (filterCategoriaId && !lookup.categorias.some((item) => item.id === filterCategoriaId)) {
+      setFilterCategoriaId("");
+    }
+
+    if (form.categoriaId && !lookup.categorias.some((item) => item.id === form.categoriaId)) {
+      setForm((prev) => ({ ...prev, categoriaId: "" }));
+    }
+  }, [filterCategoriaId, form.categoriaId, lookup.categorias]);
+
   // ─── Derived ───
   const cuentasBancariasFiltradas = form.bankId
     ? lookup.cuentasBancarias.filter((c) => c.bankId === form.bankId)
@@ -435,16 +492,6 @@ function IngresosGastosPageContent() {
   const categoriasOrdenadas = [...lookup.categorias].sort((a, b) =>
     String(a?.nombre ?? "").localeCompare(String(b?.nombre ?? ""), "es", { sensitivity: "base" }),
   );
-
-  const filtered = movimientos.filter((m) => {
-    if (!searchTerm) return true;
-    const q = searchTerm.toLowerCase();
-    return (
-      Boolean(m.categoriaNombre?.toLowerCase().includes(q)) ||
-      Boolean(m.descripcion?.toLowerCase().includes(q)) ||
-      m.monto.includes(q)
-    );
-  });
 
   const totalMes = movimientos.reduce((acc, m) => acc + Number(m.monto), 0);
 
@@ -504,8 +551,9 @@ function IngresosGastosPageContent() {
               variant="outline"
               className="gap-2"
               onClick={() => {
-                setOffset(0);
-                fetchMovimientos(activeTab, 0, false);
+                setPage(1);
+                fetchLookup(activeTab);
+                fetchMovimientos(activeTab, 1);
               }}
             >
               <RefreshCw className={`h-4 w-4 ${isLoading ? "animate-spin" : ""}`} />
@@ -525,6 +573,74 @@ function IngresosGastosPageContent() {
             </Button>
           </div>
         </div>
+
+        <Card className="border-border/70">
+          <CardContent className="grid grid-cols-1 gap-3 p-4 md:grid-cols-2 xl:grid-cols-5">
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs font-bold uppercase">Categoría</Label>
+              <Select
+                value={filterCategoriaId || "all"}
+                onValueChange={(v) => setFilterCategoriaId(v === "all" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {categoriasOrdenadas.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs font-bold uppercase">Método</Label>
+              <Select value={filterMetodo || "all"} onValueChange={(v) => setFilterMetodo(v === "all" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  {METODOS_PAGO.map((m) => (
+                    <SelectItem key={m.value} value={m.value}>
+                      {m.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs font-bold uppercase">Desde</Label>
+              <Input type="date" value={filterStartDate} onChange={(e) => setFilterStartDate(e.target.value)} />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-muted-foreground text-xs font-bold uppercase">Hasta</Label>
+              <Input type="date" value={filterEndDate} onChange={(e) => setFilterEndDate(e.target.value)} />
+            </div>
+
+            <div className="flex items-end">
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  setFilterCategoriaId("");
+                  setFilterMetodo("");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
+                  setSearchTerm("");
+                  setPage(1);
+                }}
+              >
+                Limpiar filtros
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -575,51 +691,45 @@ function IngresosGastosPageContent() {
         {/* Tab Content */}
         <TabsContent value="gasto" className="mt-0">
           <MovimientosTable
-            data={filtered}
+            data={movimientos}
             isLoading={isLoading}
             searchTerm={searchTerm}
             onSearch={setSearchTerm}
             onEdit={openEdit}
             onDelete={handleDelete}
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+              void fetchMovimientos(activeTab, 1);
+            }}
+            onPageChange={(nextPage) => fetchMovimientos(activeTab, nextPage)}
             isGasto
           />
-          {!searchTerm && total > movimientos.length && (
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="outline"
-                className="gap-2"
-                disabled={isLoading}
-                onClick={() => fetchMovimientos(activeTab, offset + LIMIT, true)}
-              >
-                {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-                Cargar más ({movimientos.length} de {total})
-              </Button>
-            </div>
-          )}
         </TabsContent>
         <TabsContent value="ingreso" className="mt-0">
           <MovimientosTable
-            data={filtered}
+            data={movimientos}
             isLoading={isLoading}
             searchTerm={searchTerm}
             onSearch={setSearchTerm}
             onEdit={openEdit}
             onDelete={handleDelete}
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            pageSize={pageSize}
+            onPageSizeChange={(nextPageSize) => {
+              setPageSize(nextPageSize);
+              setPage(1);
+              void fetchMovimientos(activeTab, 1);
+            }}
+            onPageChange={(nextPage) => fetchMovimientos(activeTab, nextPage)}
             isGasto={false}
           />
-          {!searchTerm && total > movimientos.length && (
-            <div className="mt-4 flex justify-center">
-              <Button
-                variant="outline"
-                className="gap-2"
-                disabled={isLoading}
-                onClick={() => fetchMovimientos(activeTab, offset + LIMIT, true)}
-              >
-                {isLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
-                Cargar más ({movimientos.length} de {total})
-              </Button>
-            </div>
-          )}
         </TabsContent>
       </Tabs>
 
@@ -869,6 +979,12 @@ function MovimientosTable({
   onSearch,
   onEdit,
   onDelete,
+  page,
+  totalPages,
+  total,
+  pageSize,
+  onPageSizeChange,
+  onPageChange,
   isGasto,
 }: {
   data: Movimiento[];
@@ -877,6 +993,12 @@ function MovimientosTable({
   onSearch: (v: string) => void;
   onEdit: (m: Movimiento) => void;
   onDelete: (id: string) => void;
+  page: number;
+  totalPages: number;
+  total: number;
+  pageSize: number;
+  onPageSizeChange: (pageSize: number) => void;
+  onPageChange: (page: number) => void;
   isGasto: boolean;
 }) {
   return (
@@ -986,6 +1108,44 @@ function MovimientosTable({
           </TableBody>
         </Table>
       </CardContent>
+      <div className="border-t px-4 py-3">
+        <div className="flex items-center justify-between">
+          <p className="text-muted-foreground text-xs">
+            Mostrando hasta {pageSize} registros por página. Página {page} de {Math.max(totalPages, 1)} ({total}{" "}
+            registros)
+          </p>
+          <div className="flex items-center gap-2">
+            <Select value={String(pageSize)} onValueChange={(value) => onPageSizeChange(Number(value))}>
+              <SelectTrigger className="h-8 w-[96px]">
+                <SelectValue placeholder="Filas" />
+              </SelectTrigger>
+              <SelectContent>
+                {PAGE_SIZE_OPTIONS.map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size} filas
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1 || isLoading}
+              onClick={() => onPageChange(page - 1)}
+            >
+              Anterior
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages || isLoading}
+              onClick={() => onPageChange(page + 1)}
+            >
+              Siguiente
+            </Button>
+          </div>
+        </div>
+      </div>
     </Card>
   );
 }

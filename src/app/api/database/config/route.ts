@@ -26,6 +26,7 @@ export const GET = withAuth(
 
     return NextResponse.json({
       backupPath: backupService.getBackupPath(),
+      backupMode: backupService.hasNeonSnapshotSupport() ? "neon-snapshot" : "local",
       localStatus,
       cloudStatus,
       localUrl: "N/A (Deshabilitado)",

@@ -94,6 +94,11 @@ export const sidebarItemsBase: NavGroup[] = [
             icon: "DoorOpen",
           },
           {
+            title: "Ingresos & Gastos",
+            url: "/dashboard/contabilidad/ingresos-gastos",
+            icon: "TrendingUp",
+          },
+          {
             title: "Listado Cajas",
             url: "/dashboard/cajas-chicas/listado",
             icon: "List",
@@ -193,16 +198,6 @@ export const sidebarItemsBase: NavGroup[] = [
             icon: "PiggyBank",
           },
           {
-            title: "Ingresos & Gastos",
-            url: "/dashboard/contabilidad/ingresos-gastos",
-            icon: "TrendingUp",
-          },
-          {
-            title: "Listado de Ingresos",
-            url: "/dashboard/listados/ingresos",
-            icon: "ArrowUpCircle",
-          },
-          {
             title: "Traspasos",
             url: "/dashboard/contabilidad/traspasos",
             icon: "ArrowLeftRight",
@@ -253,23 +248,6 @@ export const sidebarItemsBase: NavGroup[] = [
             title: "Pagos x Mes",
             url: "/dashboard/facturas/pagos-mes",
             icon: "CalendarCheck",
-          },
-        ],
-      },
-      {
-        title: "Listados",
-        url: "/dashboard/listados",
-        icon: "ClipboardList",
-        subItems: [
-          {
-            title: "Lista Ingresos",
-            url: "/dashboard/listados/ingresos",
-            icon: "ArrowUpCircle",
-          },
-          {
-            title: "Lista Gastos",
-            url: "/dashboard/listados/gastos",
-            icon: "ArrowDownCircle",
           },
         ],
       },
