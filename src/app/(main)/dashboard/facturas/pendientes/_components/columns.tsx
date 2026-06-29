@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { DataTableColumnHeader } from "@/components/data-table/data-table-column-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatearPeriodoFacturado } from "@/app/api/facturas/lib/periodos";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -573,12 +574,23 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
                         </p>
                       </div>
                       {invoiceDetail.periodoFacturadoInicio && (
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-3">
                           <p className="text-muted-foreground text-[10px] font-black uppercase">Periodo</p>
-                          <p className="text-[10px] font-bold">
-                            {formatDate(invoiceDetail.periodoFacturadoInicio)} -{" "}
-                            {formatDate(invoiceDetail.periodoFacturadoFin)}
-                          </p>
+                          <div className="text-right">
+                            <p className="text-[10px] font-bold">
+                              {formatDate(invoiceDetail.periodoFacturadoInicio)} - {formatDate(invoiceDetail.periodoFacturadoFin)}
+                            </p>
+                            <p className="text-[10px] font-semibold text-blue-700">
+                              {formatearPeriodoFacturado(
+                                invoiceDetail.periodoFacturadoInicio
+                                  ? new Date(invoiceDetail.periodoFacturadoInicio).getMonth() + 1
+                                  : null,
+                                invoiceDetail.periodoFacturadoInicio
+                                  ? new Date(invoiceDetail.periodoFacturadoInicio).getFullYear()
+                                  : null,
+                              )}
+                            </p>
+                          </div>
                         </div>
                       )}
                     </div>

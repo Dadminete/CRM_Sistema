@@ -25,6 +25,19 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { categorizarConflictoFactura } from "@/app/api/facturas/lib/conflictos";
+import {
+  obtenerEstadoBloqueoFactura,
+  obtenerIdsParaSeleccionMasiva,
+} from "@/app/(main)/dashboard/facturas/crear/seleccion";
 import { cn } from "@/lib/utils";
 
 const formatCurrency = (v: string | number) =>
@@ -69,11 +82,27 @@ export default function CrearFacturasPage() {
   const [pagoAdelantadoUnMes, setPagoAdelantadoUnMes] = useState<boolean>(false);
   const [mesAdelantado, setMesAdelantado] = useState<number>(mesSiguienteInicial);
   const [anioAdelantado, setAnioAdelantado] = useState<number>(anioSiguienteInicial);
+  const [cantidadMesesAdelantados, setCantidadMesesAdelantados] = useState<number>(1);
+
+  // Datos de contabilidad y caja
+  const [lookupData, setLookupData] = useState<any>({ cajas: [], cuentasBancarias: [] });
+  const [activeSession, setActiveSession] = useState<any>(null);
+
+  // Pago inmediato
+  const [registrarPagoInmediato, setRegistrarPagoInmediato] = useState<boolean>(false);
+  const [metodoPago, setMetodoPago] = useState<string>("efectivo");
+  const [cajaSeleccionada, setCajaSeleccionada] = useState<string>("");
+  const [cuentaBancariaSeleccionada, setCuentaBancariaSeleccionada] = useState<string>("");
+  const [numeroReferencia, setNumeroReferencia] = useState<string>("");
+
+  // Conflictos
+  const [conflictos, setConflictos] = useState<any[]>([]);
+  const [showConflictModal, setShowConflictModal] = useState<boolean>(false);
 
   // Selección
   const [suscripcionesSeleccionadas, setSuscripcionesSeleccionadas] = useState<Set<string>>(new Set());
 
-  // Loading billing days on mount
+  // Loading billing days, lookup data and session on mount
   useEffect(() => {
     fetch("/api/facturas/dias-facturacion")
       .then((r) => r.json())
@@ -96,6 +125,32 @@ export default function CrearFacturasPage() {
         }
       })
       .catch(console.error);
+
+    fetch("/api/contabilidad/lookup")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success) {
+          setLookupData(res.data);
+          if (res.data.cajas?.length > 0) {
+            const principal = res.data.cajas.find((c: any) => c.nombre.toLowerCase().includes("principal"));
+            setCajaSeleccionada(principal ? principal.id : res.data.cajas[0].id);
+          }
+          if (res.data.cuentasBancarias?.length > 0) {
+            setCuentaBancariaSeleccionada(res.data.cuentasBancarias[0].id);
+          }
+        }
+      })
+      .catch(console.error);
+
+    fetch("/api/cajas/sesiones")
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.activeSession) {
+          setActiveSession(res.activeSession);
+          setCajaSeleccionada(res.activeSession.cajaId);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   const cargarSuscripciones = useCallback(
@@ -105,7 +160,7 @@ export default function CrearFacturasPage() {
 
       setIsLoading(true);
       try {
-        const url = `/api/suscripciones/por-dia-facturacion?${diaFacturacion ? `diaFacturacion=${diaFacturacion}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}`;
+        const url = `/api/suscripciones/por-dia-facturacion?${diaFacturacion ? `diaFacturacion=${diaFacturacion}` : ""}${search ? `&search=${encodeURIComponent(search)}` : ""}&mesPeriodo=${mesSeleccionado}&anioPeriodo=${anioSeleccionado}`;
         const res = await fetch(url.replace("?&", "?"));
         const data = await res.json();
 
@@ -121,7 +176,7 @@ export default function CrearFacturasPage() {
         setIsLoading(false);
       }
     },
-    [diaFacturacion],
+    [diaFacturacion, mesSeleccionado, anioSeleccionado],
   );
 
   useEffect(() => {
@@ -130,23 +185,37 @@ export default function CrearFacturasPage() {
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, diaFacturacion, cargarSuscripciones]);
+  }, [searchQuery, diaFacturacion, mesSeleccionado, anioSeleccionado, cargarSuscripciones]);
 
   const toggleSuscripcion = (id: string) => {
     const nuevas = new Set(suscripcionesSeleccionadas);
     if (nuevas.has(id)) {
       nuevas.delete(id);
     } else {
+      const suscripcion = suscripciones.find((item) => item.id === id);
+      if (suscripcion?.tieneFacturaPeriodo) {
+        return;
+      }
       nuevas.add(id);
     }
     setSuscripcionesSeleccionadas(nuevas);
   };
 
   const toggleTodas = () => {
-    if (suscripcionesSeleccionadas.size === suscripciones.length) {
+    const idsDisponibles = obtenerIdsParaSeleccionMasiva(suscripciones, suscripcionesSeleccionadas);
+    if (idsDisponibles.size === 0) {
       setSuscripcionesSeleccionadas(new Set());
+      return;
+    }
+
+    const yaSeleccionadas = Array.from(suscripcionesSeleccionadas).filter((id) => idsDisponibles.has(id));
+    if (yaSeleccionadas.length === idsDisponibles.size) {
+      const nuevas = new Set(Array.from(suscripcionesSeleccionadas).filter((id) => !idsDisponibles.has(id)));
+      setSuscripcionesSeleccionadas(nuevas);
     } else {
-      setSuscripcionesSeleccionadas(new Set(suscripciones.map((s) => s.id)));
+      const nuevas = new Set(suscripcionesSeleccionadas);
+      idsDisponibles.forEach((id) => nuevas.add(id));
+      setSuscripcionesSeleccionadas(nuevas);
     }
   };
 
@@ -186,27 +255,44 @@ export default function CrearFacturasPage() {
     };
   };
 
-  const crearFacturas = async () => {
-    if (suscripcionesSeleccionadas.size === 0) {
-      toast.error("Debe seleccionar al menos una suscripción");
-      return;
+  const ejecutarCreacionMasiva = async ({ forzarCreacion = false, ignorarConflictivos = false }) => {
+    setShowConflictModal(false);
+    setIsSubmitting(true);
+
+    let idsParaEnviar = Array.from(suscripcionesSeleccionadas);
+    if (ignorarConflictivos) {
+      const idsConflictivos = new Set(conflictos.map((c) => c.suscripcionId));
+      idsParaEnviar = idsParaEnviar.filter((id) => !idsConflictivos.has(id));
+
+      if (idsParaEnviar.length === 0) {
+        toast.error("No quedan facturas para crear después de omitir los conflictos");
+        setIsSubmitting(false);
+        return;
+      }
     }
 
-    setIsSubmitting(true);
     try {
       const res = await fetch("/api/facturas/crear-masivo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          suscripcionIds: Array.from(suscripcionesSeleccionadas),
+          suscripcionIds: idsParaEnviar,
           mesPeriodo: mesSeleccionado,
           anioPeriodo: anioSeleccionado,
           usuarioId: usuarioId || undefined,
           itbisPorcentaje: itbisManual,
           descuentoManualMonto: puedeAplicarDescuentoManual && descuentoManualMonto >= 1 ? descuentoManualMonto : 0,
+          pagoAdelantado: pagoAdelantadoUnMes,
+          mesesAdelantados: pagoAdelantadoUnMes ? Math.max(0, cantidadMesesAdelantados - 1) : 0,
           pagoAdelantadoUnMes,
           mesAdelantado: pagoAdelantadoUnMes ? mesAdelantado : undefined,
           anioAdelantado: pagoAdelantadoUnMes ? anioAdelantado : undefined,
+          forzarCreacion,
+          registrarPagoInmediato,
+          metodoPago: registrarPagoInmediato ? metodoPago : undefined,
+          cajaId: registrarPagoInmediato && metodoPago === "efectivo" ? cajaSeleccionada : undefined,
+          cuentaBancariaId: registrarPagoInmediato && metodoPago !== "efectivo" ? cuentaBancariaSeleccionada : undefined,
+          numeroReferencia: registrarPagoInmediato ? numeroReferencia : undefined,
         }),
       });
 
@@ -219,7 +305,7 @@ export default function CrearFacturasPage() {
           // Mostrar detalles de los errores
           if (data.data.errores && data.data.errores.length > 0) {
             data.data.errores.forEach((err: any) => {
-              toast.error(`${err.numeroContrato || "Sin contrato"}: ${err.error}`);
+              toast.error(`${err.numeroContrato || "Sin contrato"} (${err.periodo}): ${err.error}`);
             });
           }
         }
@@ -235,11 +321,50 @@ export default function CrearFacturasPage() {
     }
   };
 
-  const generarOpcionesMes = () => {
-    const hoy = new Date();
-    const mesActual = hoy.getMonth() + 1;
-    const anioActual = hoy.getFullYear();
+  const crearFacturas = async () => {
+    if (suscripcionesSeleccionadas.size === 0) {
+      toast.error("Debe seleccionar al menos una suscripción");
+      return;
+    }
 
+    setIsSubmitting(true);
+    try {
+      const res = await fetch("/api/facturas/chequear-existentes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          suscripcionIds: Array.from(suscripcionesSeleccionadas),
+          mesPeriodo: mesSeleccionado,
+          anioPeriodo: anioSeleccionado,
+          pagoAdelantado: pagoAdelantadoUnMes,
+          mesesAdelantados: pagoAdelantadoUnMes ? Math.max(0, cantidadMesesAdelantados - 1) : 0,
+          pagoAdelantadoUnMes,
+          mesAdelantado: pagoAdelantadoUnMes ? mesAdelantado : undefined,
+          anioAdelantado: pagoAdelantadoUnMes ? anioAdelantado : undefined,
+        }),
+      });
+
+      const data = await res.json();
+      setIsSubmitting(false);
+
+      if (data.success) {
+        if (data.data.conflicts && data.data.conflicts.length > 0) {
+          setConflictos(data.data.conflicts);
+          setShowConflictModal(true);
+        } else {
+          // No hay conflictos, proceder directamente
+          await ejecutarCreacionMasiva({ forzarCreacion: false, ignorarConflictivos: false });
+        }
+      } else {
+        toast.error(data.error || "Error al verificar facturas existentes");
+      }
+    } catch (error) {
+      setIsSubmitting(false);
+      toast.error("Error de conexión");
+    }
+  };
+
+  const generarOpcionesMes = () => {
     const opciones = [];
 
     // Mes anterior
@@ -270,7 +395,6 @@ export default function CrearFacturasPage() {
     return opciones;
   };
 
-  // La búsqueda ahora es en el servidor, así que filteredSuscripciones es básicamente suscripciones
   const filteredSuscripciones = suscripciones;
 
   const clientesSeleccionados = new Set(
@@ -296,6 +420,19 @@ export default function CrearFacturasPage() {
   }, [pagoAdelantadoUnMes, mesAdelantado, anioAdelantado]);
 
   const aniosAdelantado = Array.from({ length: 4 }, (_, i) => anioActual + i);
+
+  const periodosConsecutivosSeleccionados = (() => {
+    const baseMes = pagoAdelantadoUnMes ? mesAdelantado : mesSeleccionado;
+    const baseAnio = pagoAdelantadoUnMes ? anioAdelantado : anioSeleccionado;
+    const totalMeses = pagoAdelantadoUnMes ? Math.max(1, cantidadMesesAdelantados) : 1;
+
+    return Array.from({ length: totalMeses }, (_, index) => {
+      const absoluteMonth = baseMes - 1 + index;
+      const mes = (absoluteMonth % 12) + 1;
+      const anio = baseAnio + Math.floor(absoluteMonth / 12);
+      return { mes, anio, label: `${MESES[mes - 1]?.label} ${anio}` };
+    });
+  })();
 
   useEffect(() => {
     if (!puedeAplicarDescuentoManual && descuentoManualMonto !== 0) {
@@ -448,6 +585,8 @@ export default function CrearFacturasPage() {
                     const subtotal = precio - descuento;
                     const itbis = subtotal * (itbisManual / 100);
                     const total = subtotal + itbis;
+                    const estadoBloqueo = obtenerEstadoBloqueoFactura(sus);
+                    const estaBloqueado = estadoBloqueo.esBloqueado;
 
                     return (
                       <div
@@ -457,10 +596,12 @@ export default function CrearFacturasPage() {
                           "group flex cursor-pointer items-start gap-4 rounded-xl border p-4 transition-all",
                           isSelected
                             ? "border-primary bg-primary/5 ring-primary ring-1"
-                            : "border-slate-100 bg-white hover:border-slate-300",
+                            : estaBloqueado
+                              ? "border-amber-200 bg-amber-50/70"
+                              : "border-slate-100 bg-white hover:border-slate-300",
                         )}
                       >
-                        <Checkbox checked={isSelected} className="mt-1" />
+                        <Checkbox checked={isSelected} disabled={estaBloqueado} className="mt-1" />
                         <div className="flex flex-1 flex-col gap-2">
                           <div className="flex items-start justify-between">
                             <div className="space-y-0.5">
@@ -477,6 +618,11 @@ export default function CrearFacturasPage() {
                               {descuento > 0 && (
                                 <div className="text-muted-foreground text-[9px]">Desc. {sus.descuento_aplicado}%</div>
                               )}
+                              {estaBloqueado ? (
+                                <div className="text-[9px] font-black uppercase text-amber-600">
+                                  {estadoBloqueo.mensaje}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                           <div className="flex items-center gap-3 text-[9px]">
@@ -486,6 +632,11 @@ export default function CrearFacturasPage() {
                             <span className="text-muted-foreground">
                               Día {sus.dia_facturacion} | {formatCurrency(precio)}/mes
                             </span>
+                            {estaBloqueado ? (
+                              <Badge variant="outline" className="h-4 border-amber-300 bg-amber-100 px-2 py-0 text-[9px] font-black text-amber-700">
+                                Bloqueado
+                              </Badge>
+                            ) : null}
                           </div>
                         </div>
                       </div>
@@ -513,6 +664,16 @@ export default function CrearFacturasPage() {
                     {MESES[mesSeleccionado - 1]?.label} {anioSeleccionado}
                   </span>
                 </div>
+                {pagoAdelantadoUnMes && (
+                  <div className="space-y-1 rounded-md border border-sky-100 bg-sky-50 p-2 dark:border-sky-900 dark:bg-sky-950">
+                    <div className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
+                      Meses a Facturar
+                    </div>
+                    <div className="text-[11px] text-sky-800 dark:text-sky-200">
+                      {periodosConsecutivosSeleccionados.map((p) => p.label).join(" | ")}
+                    </div>
+                  </div>
+                )}
                 <div className="flex items-center justify-between text-xs">
                   <span className="text-muted-foreground dark:text-slate-400">Día de Cobro:</span>
                   <span className="font-bold text-slate-700 dark:text-white">Día {diaFacturacion}</span>
@@ -623,21 +784,22 @@ export default function CrearFacturasPage() {
                             setPagoAdelantadoUnMes(enabled);
                             if (enabled) {
                               setPeriodoMesSiguiente();
+                              setCantidadMesesAdelantados(1);
                             }
                           }}
                           className="mt-0.5"
                         />
                         <span>
-                          Marcar facturas como <strong>PAGO ADELANTADO (1 MES)</strong> y seleccionar el mes específico
-                          que el cliente está pagando.
+                          Marcar facturas como <strong>PAGO ADELANTADO</strong> y seleccionar el mes de inicio junto
+                          con la cantidad de meses consecutivos a facturar.
                         </span>
                       </label>
 
                       {pagoAdelantadoUnMes && (
-                        <div className="grid gap-3 md:grid-cols-2">
+                        <div className="grid gap-3 md:grid-cols-3">
                           <div className="space-y-1">
                             <Label className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
-                              Mes Adelantado
+                              Mes Inicio
                             </Label>
                             <Select value={String(mesAdelantado)} onValueChange={(v) => setMesAdelantado(Number(v))}>
                               <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
@@ -654,7 +816,7 @@ export default function CrearFacturasPage() {
                           </div>
                           <div className="space-y-1">
                             <Label className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
-                              Año Adelantado
+                              Año Inicio
                             </Label>
                             <Select value={String(anioAdelantado)} onValueChange={(v) => setAnioAdelantado(Number(v))}>
                               <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
@@ -669,6 +831,124 @@ export default function CrearFacturasPage() {
                               </SelectContent>
                             </Select>
                           </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-black tracking-wider text-sky-700 uppercase dark:text-sky-300">
+                              Cantidad de Meses
+                            </Label>
+                            <Input
+                              type="number"
+                              min="1"
+                              max="3"
+                              step="1"
+                              className="h-9 bg-white dark:bg-slate-900"
+                              value={cantidadMesesAdelantados}
+                              onChange={(e) => {
+                                const value = Number(e.target.value || 1);
+                                if (!Number.isFinite(value)) {
+                                  setCantidadMesesAdelantados(1);
+                                  return;
+                                }
+                                setCantidadMesesAdelantados(Math.max(1, Math.min(3, Math.trunc(value))));
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cobro Inmediato */}
+                    <div className="space-y-3 rounded-lg border border-emerald-100 bg-emerald-50/50 p-3 dark:border-emerald-950 dark:bg-emerald-950/20">
+                      <div className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                        Cobro Inmediato
+                      </div>
+                      <label className="flex cursor-pointer items-start gap-2 text-xs text-emerald-800 dark:text-emerald-200">
+                        <Checkbox
+                          checked={registrarPagoInmediato}
+                          onCheckedChange={(checked) => setRegistrarPagoInmediato(checked === true)}
+                          className="mt-0.5"
+                        />
+                        <span>
+                          <strong>Registrar Pago Inmediato</strong> (Cobrar y marcar como pagadas automáticamente al crear).
+                        </span>
+                      </label>
+
+                      {registrarPagoInmediato && (
+                        <div className="space-y-3 pt-1">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                              Método de Pago
+                            </Label>
+                            <Select value={metodoPago} onValueChange={setMetodoPago}>
+                              <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="efectivo">Efectivo</SelectItem>
+                                <SelectItem value="transferencia">Transferencia</SelectItem>
+                                <SelectItem value="tarjeta">Tarjeta</SelectItem>
+                                <SelectItem value="otros">Otros</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {metodoPago === "efectivo" ? (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                                Caja Seleccionada
+                              </Label>
+                              <Select value={cajaSeleccionada} onValueChange={setCajaSeleccionada}>
+                                <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
+                                  <SelectValue placeholder="Seleccionar caja..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {lookupData.cajas?.map((c: any) => (
+                                    <SelectItem key={c.id} value={c.id}>
+                                      {c.nombre}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              {activeSession ? (
+                                <p className="text-[9px] text-emerald-600 font-semibold">
+                                  Sesión de caja abierta: {activeSession.cajaNombre}
+                                </p>
+                              ) : (
+                                <p className="text-[9px] text-amber-600 font-semibold">
+                                  ⚠️ No hay sesión de caja abierta detectada.
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="space-y-1">
+                              <Label className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                                Cuenta Bancaria
+                              </Label>
+                              <Select value={cuentaBancariaSeleccionada} onValueChange={setCuentaBancariaSeleccionada}>
+                                <SelectTrigger className="h-9 bg-white dark:bg-slate-900">
+                                  <SelectValue placeholder="Seleccionar cuenta..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {lookupData.cuentasBancarias?.map((cb: any) => (
+                                    <SelectItem key={cb.id} value={cb.id}>
+                                      {cb.bankNombre} - {cb.numeroCuenta}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-black tracking-wider text-emerald-700 uppercase dark:text-emerald-300">
+                              Referencia de Pago (Opcional)
+                            </Label>
+                            <Input
+                              placeholder="Ej: Depósito 45930"
+                              className="h-9 bg-white dark:bg-slate-900"
+                              value={numeroReferencia}
+                              onChange={(e) => setNumeroReferencia(e.target.value)}
+                            />
+                          </div>
                         </div>
                       )}
                     </div>
@@ -681,7 +961,7 @@ export default function CrearFacturasPage() {
                     Total a Facturar:
                   </span>
                   <span className="text-primary dark:text-primary text-xl font-black">
-                    {formatCurrency(detallesSeleccion.totalFinal)}
+                    {formatCurrency(detallesSeleccion.totalFinal * (pagoAdelantadoUnMes ? Math.max(1, cantidadMesesAdelantados) : 1))}
                   </span>
                 </div>
               </div>
@@ -710,7 +990,7 @@ export default function CrearFacturasPage() {
             <ul className="space-y-1 text-[9px] leading-relaxed font-medium text-blue-700">
               <li className="flex items-start gap-2">
                 <ChevronRight className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                Las facturas se generan con estado "pendiente"
+                Las facturas se generan con estado "pendiente" a menos que marque Cobro Inmediato
               </li>
               <li className="flex items-start gap-2">
                 <ChevronRight className="mt-0.5 h-3 w-3 flex-shrink-0" />
@@ -726,12 +1006,96 @@ export default function CrearFacturasPage() {
               </li>
               <li className="flex items-start gap-2">
                 <ChevronRight className="mt-0.5 h-3 w-3 flex-shrink-0" />
-                Puede marcar la factura como pago adelantado de 1 mes
+                Puede crear facturas por hasta 3 meses adelantados consecutivos
               </li>
             </ul>
           </div>
         </div>
       </div>
+
+      {/* Conflict Resolution Modal */}
+      <Dialog open={showConflictModal} onOpenChange={setShowConflictModal}>
+        <DialogContent className="max-w-md bg-white dark:bg-slate-900 border">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-bold text-amber-700 dark:text-amber-500">
+              <AlertCircle className="h-5 w-5" /> Advertencia: Facturas Existentes
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Se detectaron facturas generadas para los clientes seleccionados en los períodos elegidos.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="custom-scrollbar max-h-60 overflow-y-auto space-y-2 py-3">
+            {conflictos.map((conflict, i) => {
+              const resumen = categorizarConflictoFactura(conflict);
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    "rounded-lg border p-3 text-xs leading-relaxed",
+                    resumen.esCancelada
+                      ? "border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200"
+                      : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-950/50 dark:bg-amber-950/20 dark:text-amber-200"
+                  )}
+                >
+                  <p className="font-bold">
+                    {conflict.clienteNombre} ({conflict.numeroContrato})
+                  </p>
+                  <p>
+                    Servicio: <span className="font-semibold">{conflict.servicioNombre}</span>
+                  </p>
+                  <p>
+                    Periodo: <span className="font-semibold">{MESES[conflict.mes - 1]?.label} {conflict.anio}</span>
+                  </p>
+                  <p className="mt-1 flex items-center gap-1.5 font-bold">
+                    Factura: {conflict.numeroFactura || "Sin número"} | Estado:
+                    <Badge
+                      variant={resumen.esCancelada ? "secondary" : "destructive"}
+                      className="h-4 px-1.5 text-[8px] font-bold uppercase"
+                    >
+                      {conflict.estado}
+                    </Badge>
+                  </p>
+                  <p className="mt-1 text-[10px] font-medium">
+                    {resumen.mensaje}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          <DialogFooter className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowConflictModal(false)}
+              className="text-xs font-semibold"
+            >
+              Cancelar
+            </Button>
+            {conflictos.length < suscripcionesSeleccionadas.size && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => ejecutarCreacionMasiva({ forzarCreacion: false, ignorarConflictivos: true })}
+                className="text-xs font-semibold"
+              >
+                Omitir y continuar
+              </Button>
+            )}
+            <Button
+              variant="default"
+              size="sm"
+              onClick={() => ejecutarCreacionMasiva({ forzarCreacion: true, ignorarConflictivos: false })}
+              className="text-xs font-semibold"
+            >
+              {conflictos.some((conflict) => ["anulada", "cancelada"].includes(String(conflict.estado).toLowerCase()))
+                ? "Duplicar / Crear nueva factura"
+                : "Duplicar / Crear de todos modos"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

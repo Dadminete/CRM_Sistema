@@ -397,6 +397,12 @@ export default function PagarFacturaPage() {
                       <span className="font-semibold text-slate-700">Total factura:</span>
                       <span className="font-bold text-slate-900">{formatCurrency(selectedFactura.total)}</span>
                     </div>
+                    {selectedFactura.periodoLabel ? (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">Periodo:</span>
+                        <span className="font-bold text-blue-700">{selectedFactura.periodoLabel}</span>
+                      </div>
+                    ) : null}
                     {esPagoAdelantado && (
                       <div className="flex items-center justify-between text-xs">
                         <span className="font-semibold text-slate-700">Pagado por adelantado:</span>

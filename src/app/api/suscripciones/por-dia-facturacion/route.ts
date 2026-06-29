@@ -3,7 +3,7 @@ import { and, or, eq, ilike, sql, asc } from "drizzle-orm";
 
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { db } from "@/lib/db";
-import { suscripciones, clientes, servicios, planes } from "@/lib/db/schema";
+import { suscripciones, clientes, servicios, planes, facturasClientes } from "@/lib/db/schema";
 
 /**
  * GET /api/suscripciones/por-dia-facturacion
@@ -16,6 +16,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const diaFacturacion = searchParams.get("diaFacturacion");
     const search = searchParams.get("search") || "";
+    const mesPeriodo = searchParams.get("mesPeriodo");
+    const anioPeriodo = searchParams.get("anioPeriodo");
 
     if (!diaFacturacion && !search) {
       return errorResponse("Se requiere diaFacturacion o un término de búsqueda", 400);
@@ -53,6 +55,9 @@ export async function GET(request: NextRequest) {
         )
       );
     }
+
+    const mesParaConsultar = mesPeriodo ? Number.parseInt(mesPeriodo, 10) : new Date().getMonth() + 1;
+    const anioParaConsultar = anioPeriodo ? Number.parseInt(anioPeriodo, 10) : new Date().getFullYear();
 
     const data = await db
       .select({
@@ -96,9 +101,37 @@ export async function GET(request: NextRequest) {
       .orderBy(asc(clientes.nombre), asc(clientes.apellidos))
       .limit(100);
 
+    const suscripcionesConEstado = await Promise.all(
+      data.map(async (suscripcion) => {
+        try {
+          const facturas = await db
+            .select({ id: facturasClientes.id })
+            .from(facturasClientes)
+            .where(
+              and(
+                eq(facturasClientes.clienteId, suscripcion.cliente_id),
+                sql`EXTRACT(YEAR FROM COALESCE(${facturasClientes.periodoFacturadoInicio}, ${facturasClientes.fechaFactura})) = ${anioParaConsultar}`,
+                sql`EXTRACT(MONTH FROM COALESCE(${facturasClientes.periodoFacturadoInicio}, ${facturasClientes.fechaFactura})) = ${mesParaConsultar}`,
+              ),
+            )
+            .limit(1);
+
+          return {
+            ...suscripcion,
+            tieneFacturaPeriodo: facturas.length > 0,
+          };
+        } catch {
+          return {
+            ...suscripcion,
+            tieneFacturaPeriodo: false,
+          };
+        }
+      }),
+    );
+
     return successResponse({
-      suscripciones: data,
-      total: data.length,
+      suscripciones: suscripcionesConEstado,
+      total: suscripcionesConEstado.length,
     });
   } catch (error: any) {
     console.error("Error al obtener suscripciones:", error);

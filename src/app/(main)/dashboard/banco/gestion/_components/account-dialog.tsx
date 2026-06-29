@@ -32,6 +32,8 @@ interface AccountDialogProps {
 export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuccess }: AccountDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [accountingAccounts, setAccountingAccounts] = useState<any[]>([]);
+  const [loadingAccounts, setLoadingAccounts] = useState(false);
+  const [loadingAccountsError, setLoadingAccountsError] = useState<string | null>(null);
 
   const form = useForm<BankAccountFormValues>({
     resolver: zodResolver(bankAccountSchema),
@@ -74,10 +76,18 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
   }, [open, accountToEdit, form]);
 
   async function loadAccountingAccounts() {
+    setLoadingAccounts(true);
+    setLoadingAccountsError(null);
     const res = await getAccountingAccounts();
     if (res.success && res.data) {
       setAccountingAccounts(res.data);
+    } else {
+      setAccountingAccounts([]);
+      const errorMessage = res.error || "No se pudieron cargar las cuentas contables";
+      setLoadingAccountsError(errorMessage);
+      toast.error(errorMessage);
     }
+    setLoadingAccounts(false);
   }
 
   async function onSubmit(data: BankAccountFormValues) {
@@ -104,6 +114,18 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
     }
   }
 
+  function onInvalid() {
+    const errorEntries = Object.entries(form.formState.errors);
+    if (errorEntries.length === 0) {
+      toast.error("Revisa los campos requeridos antes de guardar");
+      return;
+    }
+
+    const firstError = errorEntries[0][1];
+    const message = firstError?.message;
+    toast.error(typeof message === "string" ? message : "Revisa los campos requeridos antes de guardar");
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
@@ -116,7 +138,7 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit, onInvalid)} className="space-y-4">
             <FormField
               control={form.control}
               name="numeroCuenta"
@@ -138,7 +160,7 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Tipo</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar" />
@@ -162,7 +184,7 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Moneda</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar" />
@@ -200,13 +222,21 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Cuenta Contable</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
+                    <Select onValueChange={field.onChange} value={field.value || ""}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar cuenta contable" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent className="max-h-[200px]">
+                        {loadingAccounts && (
+                          <div className="text-muted-foreground px-2 py-1.5 text-xs">Cargando cuentas...</div>
+                        )}
+                        {!loadingAccounts && accountingAccounts.length === 0 && (
+                          <div className="text-muted-foreground px-2 py-1.5 text-xs">
+                            No hay cuentas contables activas disponibles.
+                          </div>
+                        )}
                       {accountingAccounts.map((acc) => (
                         <SelectItem key={acc.id} value={acc.id}>
                           {acc.codigo} - {acc.nombre} ({acc.moneda})
@@ -215,6 +245,7 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
                     </SelectContent>
                   </Select>
                   <FormMessage />
+                  {loadingAccountsError && <p className="text-destructive text-xs">{loadingAccountsError}</p>}
                 </FormItem>
               )}
             />
@@ -237,7 +268,10 @@ export function AccountDialog({ open, onOpenChange, bankId, accountToEdit, onSuc
               <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button
+                type="submit"
+                disabled={isSubmitting || loadingAccounts || (!accountToEdit && accountingAccounts.length === 0)}
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Guardar
               </Button>

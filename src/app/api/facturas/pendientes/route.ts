@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { facturasClientes, cuentasPorCobrar, clientes, suscripciones, contratos } from "@/lib/db/schema";
 import { eq, and, or, sql, asc, gte, lte } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { formatearPeriodoFacturado } from "@/app/api/facturas/lib/periodos";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +61,8 @@ export async function GET(req: Request) {
         fechaFactura: facturasClientes.fechaFactura,
         fechaVencimiento: facturasClientes.fechaVencimiento,
         total: facturasClientes.total,
+        periodoFacturadoInicio: facturasClientes.periodoFacturadoInicio,
+        periodoFacturadoFin: facturasClientes.periodoFacturadoFin,
         estado: facturasClientes.estado,
         montoPendiente: cuentasPorCobrar.montoPendiente,
         clienteId: clientes.id,
@@ -82,9 +85,20 @@ export async function GET(req: Request) {
       console.log('[PENDIENTES] First 3:', pendientes.slice(0, 3).map(f => f.numeroFactura));
     }
 
+    const pendientesConPeriodo = pendientes.map((factura) => ({
+      ...factura,
+      periodoLabel:
+        factura.periodoFacturadoInicio || factura.periodoFacturadoFin
+          ? formatearPeriodoFacturado(
+              factura.periodoFacturadoInicio ? new Date(factura.periodoFacturadoInicio).getMonth() + 1 : null,
+              factura.periodoFacturadoInicio ? new Date(factura.periodoFacturadoInicio).getFullYear() : null,
+            )
+          : null,
+    }));
+
     return jsonResponse({
       success: true,
-      data: pendientes,
+      data: pendientesConPeriodo,
     });
   } catch (error: any) {
     console.error("Error fetching pending invoices:", error);

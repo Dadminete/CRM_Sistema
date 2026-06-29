@@ -2,10 +2,58 @@
 
 import { db } from "@/lib/db";
 import { banks, cuentasBancarias, cuentasContables } from "@/lib/db/schema";
-import { eq, desc, asc } from "drizzle-orm";
+import { eq, asc } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { bankSchema, bankAccountSchema } from "./schema";
 import { z } from "zod";
+
+function getValidationErrorMessage(validationError: z.ZodError) {
+  const firstIssue = validationError.issues[0]?.message;
+  return firstIssue ? `Datos invalidos: ${firstIssue}` : "Datos invalidos";
+}
+
+function getBankingActionErrorMessage(error: unknown, fallback: string) {
+  const err = error as {
+    code?: string;
+    detail?: string;
+    message?: string;
+    constraint?: string;
+  };
+
+  if (err?.code === "23505") {
+    if (err.constraint === "cuentas_bancarias_numero_cuenta_key") {
+      return "Ya existe una cuenta bancaria con ese numero de cuenta.";
+    }
+    if (err.constraint === "banks_codigo_key") {
+      return "Ya existe un banco con ese codigo.";
+    }
+    return "Ya existe un registro con esos datos.";
+  }
+
+  if (err?.code === "23503") {
+    if (err.constraint === "cuentas_bancarias_cuenta_contable_id_fkey") {
+      return "La cuenta contable seleccionada no existe o no es valida.";
+    }
+    if (err.constraint === "cuentas_bancarias_bank_id_fkey") {
+      return "El banco seleccionado no existe o no es valido.";
+    }
+    return "No se pudo relacionar el registro con los datos seleccionados.";
+  }
+
+  if (err?.code === "23502") {
+    return "Falta un dato obligatorio para completar la operacion.";
+  }
+
+  if (typeof err?.detail === "string" && err.detail.trim()) {
+    return err.detail.trim();
+  }
+
+  if (typeof err?.message === "string" && err.message.trim()) {
+    return err.message.trim();
+  }
+
+  return fallback;
+}
 
 // --- Bank Actions ---
 
@@ -35,7 +83,7 @@ export async function getBanks() {
 export async function createBank(data: z.infer<typeof bankSchema>) {
   const validation = bankSchema.safeParse(data);
   if (!validation.success) {
-    return { success: false, error: "Datos inválidos" };
+    return { success: false, error: getValidationErrorMessage(validation.error) };
   }
 
   try {
@@ -45,6 +93,7 @@ export async function createBank(data: z.infer<typeof bankSchema>) {
         nombre: validation.data.nombre,
         codigo: validation.data.codigo,
         activo: validation.data.activo,
+        updatedAt: new Date().toISOString(),
       })
       .returning();
 
@@ -52,14 +101,14 @@ export async function createBank(data: z.infer<typeof bankSchema>) {
     return { success: true, data: bank };
   } catch (error) {
     console.error("Error creating bank:", error);
-    return { success: false, error: "Error al crear el banco" };
+    return { success: false, error: getBankingActionErrorMessage(error, "Error al crear el banco") };
   }
 }
 
 export async function updateBank(id: string, data: z.infer<typeof bankSchema>) {
   const validation = bankSchema.safeParse(data);
   if (!validation.success) {
-    return { success: false, error: "Datos inválidos" };
+    return { success: false, error: getValidationErrorMessage(validation.error) };
   }
 
   try {
@@ -69,6 +118,7 @@ export async function updateBank(id: string, data: z.infer<typeof bankSchema>) {
         nombre: validation.data.nombre,
         codigo: validation.data.codigo,
         activo: validation.data.activo,
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(banks.id, id))
       .returning();
@@ -77,13 +127,19 @@ export async function updateBank(id: string, data: z.infer<typeof bankSchema>) {
     return { success: true, data: bank };
   } catch (error) {
     console.error("Error updating bank:", error);
-    return { success: false, error: "Error al actualizar el banco" };
+    return { success: false, error: getBankingActionErrorMessage(error, "Error al actualizar el banco") };
   }
 }
 
 export async function toggleBankStatus(id: string, currentStatus: boolean) {
   try {
-    await db.update(banks).set({ activo: !currentStatus }).where(eq(banks.id, id));
+    await db
+      .update(banks)
+      .set({
+        activo: !currentStatus,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(banks.id, id));
 
     revalidatePath("/dashboard/banco/gestion");
     return { success: true };
@@ -114,8 +170,11 @@ export async function getBankAccounts(bankId: string) {
 export async function createBankAccount(bankId: string, data: z.infer<typeof bankAccountSchema>) {
   const validation = bankAccountSchema.safeParse(data);
   if (!validation.success) {
-    console.log(validation.error);
-    return { success: false, error: "Datos inválidos" };
+    return { success: false, error: getValidationErrorMessage(validation.error) };
+  }
+
+  if (!bankId) {
+    return { success: false, error: "Banco invalido para crear la cuenta." };
   }
 
   try {
@@ -130,6 +189,7 @@ export async function createBankAccount(bankId: string, data: z.infer<typeof ban
         cuentaContableId: validation.data.cuentaContableId,
         activo: validation.data.activo,
         observaciones: validation.data.observaciones,
+        updatedAt: new Date().toISOString(),
       })
       .returning();
 
@@ -137,14 +197,14 @@ export async function createBankAccount(bankId: string, data: z.infer<typeof ban
     return { success: true, data: account };
   } catch (error) {
     console.error("Error creating bank account:", error);
-    return { success: false, error: "Error al crear la cuenta bancaria" };
+    return { success: false, error: getBankingActionErrorMessage(error, "Error al crear la cuenta bancaria") };
   }
 }
 
 export async function updateBankAccount(id: string, data: z.infer<typeof bankAccountSchema>) {
   const validation = bankAccountSchema.safeParse(data);
   if (!validation.success) {
-    return { success: false, error: "Datos inválidos" };
+    return { success: false, error: getValidationErrorMessage(validation.error) };
   }
 
   try {
@@ -158,6 +218,7 @@ export async function updateBankAccount(id: string, data: z.infer<typeof bankAcc
         cuentaContableId: validation.data.cuentaContableId,
         activo: validation.data.activo,
         observaciones: validation.data.observaciones,
+        updatedAt: new Date().toISOString(),
       })
       .where(eq(cuentasBancarias.id, id))
       .returning();
@@ -167,13 +228,19 @@ export async function updateBankAccount(id: string, data: z.infer<typeof bankAcc
     return { success: true, data: account };
   } catch (error) {
     console.error("Error updating bank account:", error);
-    return { success: false, error: "Error al actualizar la cuenta bancaria" };
+    return { success: false, error: getBankingActionErrorMessage(error, "Error al actualizar la cuenta bancaria") };
   }
 }
 
 export async function toggleBankAccountStatus(id: string, currentStatus: boolean) {
   try {
-    await db.update(cuentasBancarias).set({ activo: !currentStatus }).where(eq(cuentasBancarias.id, id));
+    await db
+      .update(cuentasBancarias)
+      .set({
+        activo: !currentStatus,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(eq(cuentasBancarias.id, id));
 
     revalidatePath("/dashboard/banco/gestion");
     return { success: true };

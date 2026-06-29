@@ -4,6 +4,8 @@ import { sql } from "drizzle-orm";
 
 import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
+import { esFacturaAdelantada } from "./lib";
+import { formatearPeriodoFacturado } from "@/app/api/facturas/lib/periodos";
 
 type Row = {
   cliente_id: string;
@@ -13,6 +15,8 @@ type Row = {
   pagos: number | null;
   monto: string | null;
   estado_mes: string | null;
+  observaciones: string | null;
+  periodo_inicio: string | null;
 };
 
 function parseYear(value: string | null): number {
@@ -62,9 +66,9 @@ export const GET = withAuth(async (req: NextRequest) => {
         FROM pagos_clientes p
         INNER JOIN facturas_clientes f ON f.id = p.factura_id
         WHERE p.cliente_id = c.id
-          AND EXTRACT(YEAR FROM f.fecha_factura) = ${year}
-          AND LOWER(COALESCE(f.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial')
-          ${month ? sql`AND EXTRACT(MONTH FROM f.fecha_factura) = ${month}` : sql``}
+          AND EXTRACT(YEAR FROM COALESCE(f.periodo_facturado_inicio, f.fecha_factura)) = ${year}
+          AND LOWER(COALESCE(f.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial', 'adelantado', 'pago adelantado', 'adelantada')
+          ${month ? sql`AND EXTRACT(MONTH FROM COALESCE(f.periodo_facturado_inicio, f.fecha_factura)) = ${month}` : sql``}
       )
       AND (
         ${search} = ''
@@ -81,21 +85,23 @@ export const GET = withAuth(async (req: NextRequest) => {
         c.id AS cliente_id,
         c.nombre,
         c.apellidos,
-        EXTRACT(MONTH FROM f.fecha_factura)::int AS mes,
+        EXTRACT(MONTH FROM COALESCE(f.periodo_facturado_inicio, f.fecha_factura))::int AS mes,
         COUNT(p.id)::int AS pagos,
         COALESCE(SUM(COALESCE(p.monto, 0) + COALESCE(p.descuento, 0)), 0)::text AS monto,
         CASE
           WHEN COUNT(*) FILTER (WHERE LOWER(COALESCE(f.estado, '')) = 'parcial') > 0 THEN 'parcial'
-          WHEN COUNT(*) FILTER (WHERE LOWER(COALESCE(f.estado, '')) IN ('pagada', 'pagado', 'pago')) > 0 THEN 'pagado'
+          WHEN COUNT(*) FILTER (WHERE LOWER(COALESCE(f.estado, '')) IN ('pagada', 'pagado', 'pago', 'adelantado', 'pago adelantado', 'adelantada')) > 0 THEN 'pagado'
           ELSE 'ninguno'
-        END AS estado_mes
+        END AS estado_mes,
+        MAX(COALESCE(f.observaciones, '')) AS observaciones,
+        MIN(COALESCE(f.periodo_facturado_inicio, f.fecha_factura)) AS periodo_inicio
       FROM clientes c
       INNER JOIN pagos_clientes p
         ON p.cliente_id = c.id
       INNER JOIN facturas_clientes f
         ON f.id = p.factura_id
-       AND EXTRACT(YEAR FROM f.fecha_factura) = ${year}
-       AND LOWER(COALESCE(f.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial')
+       AND EXTRACT(YEAR FROM COALESCE(f.periodo_facturado_inicio, f.fecha_factura)) = ${year}
+       AND LOWER(COALESCE(f.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial', 'adelantado', 'pago adelantado', 'adelantada')
       WHERE (
         ${search} = ''
         OR c.nombre ILIKE ${`%${search}%`}
@@ -112,9 +118,9 @@ export const GET = withAuth(async (req: NextRequest) => {
           FROM pagos_clientes p2
           INNER JOIN facturas_clientes f2 ON f2.id = p2.factura_id
           WHERE p2.cliente_id = c2.id
-            AND EXTRACT(YEAR FROM f2.fecha_factura) = ${year}
-            AND LOWER(COALESCE(f2.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial')
-            ${month ? sql`AND EXTRACT(MONTH FROM f2.fecha_factura) = ${month}` : sql``}
+            AND EXTRACT(YEAR FROM COALESCE(f2.periodo_facturado_inicio, f2.fecha_factura)) = ${year}
+            AND LOWER(COALESCE(f2.estado, '')) IN ('pago', 'pagado', 'pagada', 'parcial', 'adelantado', 'pago adelantado', 'adelantada')
+            ${month ? sql`AND EXTRACT(MONTH FROM COALESCE(f2.periodo_facturado_inicio, f2.fecha_factura)) = ${month}` : sql``}
         )
         AND (
           ${search} = ''
@@ -126,7 +132,7 @@ export const GET = withAuth(async (req: NextRequest) => {
         LIMIT ${limit}
         OFFSET ${offset}
       )
-      GROUP BY c.id, c.nombre, c.apellidos, EXTRACT(MONTH FROM f.fecha_factura)
+      GROUP BY c.id, c.nombre, c.apellidos, EXTRACT(MONTH FROM COALESCE(f.periodo_facturado_inicio, f.fecha_factura))
       ORDER BY c.nombre ASC, c.apellidos ASC, mes ASC NULLS LAST;
     `);
 
@@ -135,7 +141,7 @@ export const GET = withAuth(async (req: NextRequest) => {
       {
         clienteId: string;
         nombreCompleto: string;
-        meses: Record<string, { pagado: boolean; pagos: number; monto: string; estado: string }>;
+        meses: Record<string, { pagado: boolean; pagos: number; monto: string; estado: string; adelantado: boolean; periodoLabel?: string | null }>;
       }
     >();
 
@@ -144,9 +150,9 @@ export const GET = withAuth(async (req: NextRequest) => {
       const nombreCompleto = `${row.nombre ?? ""} ${row.apellidos ?? ""}`.trim();
 
       if (!clientsMap.has(clienteId)) {
-        const meses: Record<string, { pagado: boolean; pagos: number; monto: string; estado: string }> = {};
+        const meses: Record<string, { pagado: boolean; pagos: number; monto: string; estado: string; adelantado: boolean; periodoLabel?: string | null }> = {};
         for (let month = 1; month <= 12; month += 1) {
-          meses[String(month)] = { pagado: false, pagos: 0, monto: "0", estado: "ninguno" };
+          meses[String(month)] = { pagado: false, pagos: 0, monto: "0", estado: "ninguno", adelantado: false, periodoLabel: null };
         }
 
         clientsMap.set(clienteId, {
@@ -159,12 +165,17 @@ export const GET = withAuth(async (req: NextRequest) => {
       if (row.mes) {
         const key = String(row.mes);
         const pagos = Number(row.pagos ?? 0);
+        const periodoInicio = row.periodo_inicio ? new Date(row.periodo_inicio) : null;
 
         clientsMap.get(clienteId)!.meses[key] = {
           pagado: pagos > 0,
           pagos,
           monto: row.monto ?? "0",
           estado: row.estado_mes ?? "ninguno",
+          adelantado: esFacturaAdelantada(row.estado_mes, row.observaciones, false),
+          periodoLabel: periodoInicio
+            ? formatearPeriodoFacturado(periodoInicio.getMonth() + 1, periodoInicio.getFullYear())
+            : null,
         };
       }
     }

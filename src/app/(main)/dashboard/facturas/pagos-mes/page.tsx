@@ -6,6 +6,7 @@ import { CalendarCheck2, CheckCircle2, Search } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { formatearPeriodoFacturado } from "@/app/api/facturas/lib/periodos";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -33,6 +34,8 @@ type MonthStatus = {
   pagos: number;
   monto: string;
   estado: string;
+  adelantado: boolean;
+  periodoLabel?: string | null;
 };
 
 type ClientCalendar = {
@@ -171,6 +174,16 @@ export default function PagosMesPage() {
           </div>
 
           <div className="rounded-md border">
+            <div className="border-b bg-slate-50/70 px-4 py-3 text-[11px] font-semibold text-slate-700">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-1 text-white">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> Pago normal
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-purple-600 px-2 py-1 text-white">
+                  <CheckCircle2 className="h-3.5 w-3.5" /> A = Pago adelantado
+                </span>
+              </div>
+            </div>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -205,22 +218,27 @@ export default function PagosMesPage() {
                           pagos: 0,
                           monto: "0",
                           estado: "ninguno",
+                          adelantado: false,
                         };
                         const isPartial = status.estado === "parcial";
+                        const badgeClasses = status.adelantado
+                          ? "bg-purple-600 hover:bg-purple-600"
+                          : isPartial
+                            ? "bg-orange-500 hover:bg-orange-500"
+                            : "bg-blue-600 hover:bg-blue-600";
 
                         return (
                           <TableCell key={`${client.clienteId}-${month.value}`} className="text-center">
                             {status.pagado ? (
-                              <Badge
-                                variant="secondary"
-                                className={[
-                                  "inline-flex items-center gap-1 border-0 text-white",
-                                  isPartial ? "bg-orange-500 hover:bg-orange-500" : "bg-blue-600 hover:bg-blue-600",
-                                ].join(" ")}
-                              >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                {status.pagos}
-                              </Badge>
+                              <div className="flex flex-col items-center gap-1">
+                                <Badge variant="secondary" className={["inline-flex items-center gap-1 border-0 text-white", badgeClasses].join(" ")}>
+                                  <CheckCircle2 className="h-3.5 w-3.5" />
+                                  {status.adelantado ? `A ${status.pagos}` : status.pagos}
+                                </Badge>
+                                {status.periodoLabel ? (
+                                  <span className="text-[10px] font-semibold text-slate-600">{status.periodoLabel}</span>
+                                ) : null}
+                              </div>
                             ) : (
                               <span className="text-muted-foreground text-xs">-</span>
                             )}
@@ -236,7 +254,7 @@ export default function PagosMesPage() {
 
           {!isLoading && clients.length > 0 ? (
             <div className="text-muted-foreground text-xs">
-              Nota: se muestran clientes activos y cada mes se marca según pagos confirmados asociados a facturas con estado pago, pagado, pagada o parcial.
+              Nota: se muestran clientes activos y cada mes se marca según pagos confirmados asociados a facturas con estado pago, pagado, pagada o parcial. La letra A indica que el pago corresponde a un periodo adelantado.
             </div>
           ) : null}
 
