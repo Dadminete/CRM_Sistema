@@ -309,6 +309,10 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
 
   const buildThermalHtml = (detail: any, printedBy: string) => {
     const clienteNombre = `${detail?.clienteNombre || ""} ${detail?.clienteApellidos || ""}`.trim();
+    const clienteDireccion = String(detail?.clienteDireccion || "").trim();
+    const clienteSector = String(detail?.clienteSector || "").trim();
+    const clienteProvincia = String(detail?.clienteProvincia || "").trim();
+    const clienteReferencia = String(detail?.clienteReferenciaDireccion || "").trim();
     const lineItems = Array.isArray(detail?.items) ? detail.items : [];
     const tipoServicio = detectServiceType(detail);
     const planCliente = String(detail?.planNombre || "").trim() || "No especificado";
@@ -392,6 +396,10 @@ function ActionsCell({ row, onInvoiceChanged }: { row: any; onInvoiceChanged?: (
             <div class="line"></div>
 
             <div><span class="bold">Cliente:</span> ${escapeHtml(clienteNombre || "N/A")}</div>
+            <div><span class="bold">Dirección:</span> ${escapeHtml(clienteDireccion || "N/A")}</div>
+            ${clienteSector ? `<div><span class="bold">Sector:</span> ${escapeHtml(clienteSector)}</div>` : ""}
+            ${clienteProvincia ? `<div><span class="bold">Provincia:</span> ${escapeHtml(clienteProvincia)}</div>` : ""}
+            ${clienteReferencia ? `<div><span class="bold">Referencia:</span> ${escapeHtml(clienteReferencia)}</div>` : ""}
             <div><span class="bold">Servicio:</span> ${escapeHtml(tipoServicio)}</div>
             <div><span class="bold">Plan:</span> ${escapeHtml(planCliente)}</div>
             <div><span class="bold">Fecha:</span> ${escapeHtml(fechaFactura)}</div>

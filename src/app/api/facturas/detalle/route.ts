@@ -40,6 +40,9 @@ export async function GET(req: Request) {
         clienteTelefono: clientes.telefono,
         clienteEmail: clientes.email,
         clienteDireccion: clientes.direccion,
+        clienteSector: clientes.sectorBarrio,
+        clienteProvincia: clientes.provincia,
+        clienteReferenciaDireccion: clientes.referenciaDireccion,
         montoPendiente: cuentasPorCobrar.montoPendiente,
         diasVencido: cuentasPorCobrar.diasVencido,
       })
