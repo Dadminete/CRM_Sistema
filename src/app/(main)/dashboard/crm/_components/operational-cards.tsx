@@ -16,6 +16,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatCurrency } from "@/lib/utils";
 
+import { ClientDetailModal } from "../../clientes/listado/_components/client-detail-modal";
+
 type RecentClient = {
   id: string;
   nombre: string;
@@ -39,6 +41,79 @@ type SalesPoint = {
   period: string;
   label: string;
   total: number;
+};
+
+type ClientDetailResponse = {
+  client: {
+    id: string;
+    codigoCliente: string;
+    nombre: string;
+    apellidos: string;
+    cedula: string | null;
+    telefono: string | null;
+    telefonoSecundario: string | null;
+    email: string | null;
+    direccion: string | null;
+    sectorBarrio: string | null;
+    ciudad: string | null;
+    provincia: string | null;
+    codigoPostal: string | null;
+    coordenadasLat: string | number | null;
+    coordenadasLng: string | number | null;
+    sexo: string | null;
+    estado: string;
+    tipoCliente: string;
+    categoriaCliente: string;
+    fotoUrl: string | null;
+    limiteCrediticio: string | number | null;
+    diasCredito: number | null;
+    descuentoPorcentaje: string | number | null;
+    notas: string | null;
+    contacto: string | null;
+    createdAt: string;
+    montoTotal?: string | number;
+    montoMensual?: string | number;
+  };
+  invoices: Array<{
+    id: string;
+    numeroFactura: string;
+    fechaFactura: string;
+    total: string;
+    estado: string;
+    montoPendiente?: string | number;
+    cobradoPor?: string;
+    subtotal?: string;
+    itbis?: string;
+    descuento?: string;
+    observaciones?: string;
+  }>;
+  tickets: Array<{
+    id: string;
+    numeroTicket: string;
+    asunto: string;
+    fechaCreacion: string;
+    estado: string;
+    prioridad: string;
+  }>;
+  subscriptions?: Array<{
+    id: string;
+    numeroContrato: string;
+    servicio: string | null;
+    plan: string | null;
+    precioMensual: string;
+    estado: string;
+    fechaInicio: string;
+    fechaProximoPago: string | null;
+  }>;
+  history?: Array<{
+    id: string;
+    suscripcionId: string;
+    tipoCambio: string;
+    valorAnterior: string | null;
+    valorNuevo: string | null;
+    fecha: string;
+    usuario: string | null;
+  }>;
 };
 
 type PapeleriaSalesResponse = {
@@ -67,6 +142,9 @@ export function OperationalCards() {
   const [loadingClients, setLoadingClients] = useState(true);
   const [loadingAlerts, setLoadingAlerts] = useState(true);
   const [loadingSales, setLoadingSales] = useState(true);
+  const [isClientDetailOpen, setIsClientDetailOpen] = useState(false);
+  const [isClientDetailLoading, setIsClientDetailLoading] = useState(false);
+  const [clientDetail, setClientDetail] = useState<ClientDetailResponse | null>(null);
 
   useEffect(() => {
     fetch("/api/crm/recent-clients", { cache: "no-store" })
@@ -106,6 +184,27 @@ export function OperationalCards() {
       });
     } catch {
       return dateStr;
+    }
+  };
+
+  const handleOpenClientDetail = async (clientId: string) => {
+    setIsClientDetailOpen(true);
+    setIsClientDetailLoading(true);
+    setClientDetail(null);
+
+    try {
+      const response = await fetch(`/api/clientes/${clientId}`);
+      const json = await response.json();
+
+      if (json.success) {
+        setClientDetail(json);
+      } else {
+        setClientDetail(null);
+      }
+    } catch {
+      setClientDetail(null);
+    } finally {
+      setIsClientDetailLoading(false);
     }
   };
 
@@ -201,9 +300,13 @@ export function OperationalCards() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="space-y-1">
-                        <p className="text-sm leading-none font-medium">
+                        <button
+                          type="button"
+                          onClick={() => void handleOpenClientDetail(client.id)}
+                          className="hover:text-primary focus-visible:ring-primary/40 text-left text-sm leading-none font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+                        >
                           {client.nombre} {client.apellidos}
-                        </p>
+                        </button>
                         <p className="text-muted-foreground text-xs">
                           {client.codigoCliente} • <span className="capitalize">{client.estado}</span>
                         </p>
@@ -219,6 +322,19 @@ export function OperationalCards() {
           </ScrollArea>
         </CardContent>
       </Card>
+
+      <ClientDetailModal
+        isOpen={isClientDetailOpen}
+        onOpenChange={(open) => {
+          setIsClientDetailOpen(open);
+          if (!open) {
+            setClientDetail(null);
+          }
+        }}
+        isFetching={isClientDetailLoading}
+        detailClient={clientDetail}
+        onEdit={() => undefined}
+      />
 
       <Card>
         <CardHeader className="pb-2">

@@ -29,12 +29,12 @@ export function formatCurrency(
     noDecimals?: boolean;
   },
 ) {
-  const { 
-    currency = "DOP", 
-    locale = "es-DO", 
-    minimumFractionDigits = 0, 
-    maximumFractionDigits = 0, 
-    noDecimals = false 
+  const {
+    currency = "DOP",
+    locale = "es-DO",
+    minimumFractionDigits = 2,
+    maximumFractionDigits = 2,
+    noDecimals = false,
   } = opts ?? {};
 
   const formatOptions: Intl.NumberFormatOptions = {
@@ -46,7 +46,6 @@ export function formatCurrency(
 
   return new Intl.NumberFormat(locale, formatOptions).format(amount);
 }
-
 
 export const toBankPathSegment = (value: string) =>
   value

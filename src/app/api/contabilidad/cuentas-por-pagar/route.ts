@@ -1,6 +1,10 @@
 import { desc, eq, gte } from "drizzle-orm";
 
 import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
+import {
+  calculateEstadoFromPending,
+  calculatePendingBalanceFromPayments,
+} from "@/lib/contabilidad/cuentas-por-pagar-utils";
 import { db } from "@/lib/db";
 import { cuentasPorPagar, pagosCuentasPorPagar, proveedores } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
@@ -94,19 +98,59 @@ export async function GET() {
       paymentMap.get(key)!.push(payment);
     }
 
-    const accounts = accountsRaw.map((account) => {
-      const pagos = paymentMap.get(account.id) ?? [];
-      const monthlyHistory = monthKeys.map((month) => {
-        const monthPayments = pagos.filter((p) => {
-          const d = new Date(`${p.fechaPago}T00:00:00`);
-          return formatMonthKey(d) === month;
+    const accounts = await Promise.all(
+      accountsRaw.map(async (account) => {
+        const pagos = paymentMap.get(account.id) ?? [];
+        const effectivePending = calculatePendingBalanceFromPayments({
+          montoOriginal: account.montoOriginal,
+          montoPendiente: account.montoPendiente,
+          payments: pagos,
+        });
+        const effectiveEstado = calculateEstadoFromPending({
+          montoOriginal: account.montoOriginal,
+          montoPendiente: effectivePending,
+          payments: pagos,
+        });
+
+        if (String(account.montoPendiente) !== String(effectivePending) || String(account.estado) !== effectiveEstado) {
+          await db
+            .update(cuentasPorPagar)
+            .set({
+              montoPendiente: String(effectivePending),
+              estado: effectiveEstado,
+              updatedAt: new Date().toISOString(),
+            })
+            .where(eq(cuentasPorPagar.id, account.id));
+        }
+
+        const monthlyHistory = monthKeys.map((month) => {
+          const monthPayments = pagos.filter((p) => {
+            const d = new Date(`${p.fechaPago}T00:00:00`);
+            return formatMonthKey(d) === month;
+          });
+
+          return {
+            month,
+            totalPagado: monthPayments.reduce((acc, p) => acc + toNumber(p.monto), 0),
+            cantidadPagos: monthPayments.length,
+            pagos: monthPayments.map((p) => ({
+              id: p.id,
+              monto: toNumber(p.monto),
+              fechaPago: p.fechaPago,
+              metodoPago: p.metodoPago,
+              numeroReferencia: p.numeroReferencia,
+            })),
+          };
         });
 
         return {
-          month,
-          totalPagado: monthPayments.reduce((acc, p) => acc + toNumber(p.monto), 0),
-          cantidadPagos: monthPayments.length,
-          pagos: monthPayments.map((p) => ({
+          ...account,
+          montoOriginal: toNumber(account.montoOriginal),
+          montoPendiente: effectivePending,
+          estado: effectiveEstado,
+          cuotaMensual: account.cuotaMensual == null ? null : toNumber(account.cuotaMensual),
+          monthlyHistory,
+          pagosRecientes: pagos.slice(0, 10).map((p) => ({
             id: p.id,
             monto: toNumber(p.monto),
             fechaPago: p.fechaPago,
@@ -114,23 +158,8 @@ export async function GET() {
             numeroReferencia: p.numeroReferencia,
           })),
         };
-      });
-
-      return {
-        ...account,
-        montoOriginal: toNumber(account.montoOriginal),
-        montoPendiente: toNumber(account.montoPendiente),
-        cuotaMensual: account.cuotaMensual == null ? null : toNumber(account.cuotaMensual),
-        monthlyHistory,
-        pagosRecientes: pagos.slice(0, 10).map((p) => ({
-          id: p.id,
-          monto: toNumber(p.monto),
-          fechaPago: p.fechaPago,
-          metodoPago: p.metodoPago,
-          numeroReferencia: p.numeroReferencia,
-        })),
-      };
-    });
+      }),
+    );
 
     const totalPendiente = accounts.reduce((acc, a) => acc + a.montoPendiente, 0);
     const totalOriginal = accounts.reduce((acc, a) => acc + a.montoOriginal, 0);

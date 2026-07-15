@@ -330,6 +330,7 @@ export async function GET(req: Request) {
         tipo: movimientosContables.tipo,
         cuentaPorPagarId: movimientosContables.cuentaPorPagarId,
         categoria: categoriasCuentas.nombre,
+        categoriaId: movimientosContables.categoriaId,
       })
       .from(movimientosContables)
       .leftJoin(categoriasCuentas, eq(movimientosContables.categoriaId, categoriasCuentas.id))
@@ -351,12 +352,27 @@ export async function GET(req: Request) {
 
     // Normalize Data
     const normalizedExpenses: ExpenseRecord[] = [
-      ...normalizeSupplierPayments(supplierPayments as SupplierPaymentRow[]),
-      ...normalizeFixedPayments(fixedPayments as FixedPaymentRow[]),
-      ...normalizeGeneralExpenses(generalExpenses as GeneralExpenseRow[]),
+      ...normalizeSupplierPayments(supplierPayments),
+      ...normalizeFixedPayments(fixedPayments),
+      ...normalizeGeneralExpenses(generalExpenses),
     ];
 
-    const filteredExpenses = normalizedExpenses.filter((expense) =>
+    const transferFilteredExpenses = normalizedExpenses.filter((expense) => {
+      if (!traspasoCatId) {
+        return true;
+      }
+
+      const matchedTransfer = isTransferMovementRecord({
+        tipo: "gasto",
+        categoriaId: expense.categoria ? null : null,
+        descripcion: expense.concepto,
+        transferCategoryId: traspasoCatId,
+      });
+
+      return !matchedTransfer;
+    });
+
+    const filteredExpenses = transferFilteredExpenses.filter((expense) =>
       matchesExpenseFilters(expense, {
         search,
         typeFilter,

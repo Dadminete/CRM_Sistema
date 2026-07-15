@@ -34,6 +34,16 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { subscribeFinanzasUpdates } from "@/lib/finanzas-sync";
 
+type ProveedorOption = {
+  id: string;
+  nombre: string;
+  razonSocial: string | null;
+  rnc?: string | null;
+  telefono?: string | null;
+  email?: string | null;
+  contacto?: string | null;
+};
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type MonthHistory = {
@@ -109,6 +119,24 @@ type FormData = {
 
 type FilterTab = "activas" | "pendiente" | "vencida" | "pagada" | "todas";
 
+type ProviderFormData = {
+  nombre: string;
+  razonSocial: string;
+  rnc: string;
+  telefono: string;
+  email: string;
+  contacto: string;
+};
+
+const emptyProviderForm: ProviderFormData = {
+  nombre: "",
+  razonSocial: "",
+  rnc: "",
+  telefono: "",
+  email: "",
+  contacto: "",
+};
+
 const emptyForm: FormData = {
   proveedorId: "",
   numeroDocumento: "",
@@ -182,10 +210,15 @@ export default function CuentasPorPagarPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [providerSaving, setProviderSaving] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
+  const [showProviderModal, setShowProviderModal] = useState(false);
+  const [editingProviderId, setEditingProviderId] = useState<string | null>(null);
+  const [providerForm, setProviderForm] = useState<ProviderFormData>(emptyProviderForm);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<FormData>(emptyForm);
+  const [proveedores, setProveedores] = useState<ProveedorOption[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>("activas");
@@ -212,8 +245,24 @@ export default function CuentasPorPagarPage() {
   }, []);
 
   useEffect(() => {
-    fetchData(true);
-    const interval = setInterval(() => fetchData(), 30_000);
+    const runInitialLoad = async () => {
+      await fetchData(true);
+    };
+
+    void runInitialLoad();
+    const interval = setInterval(() => {
+      void fetchData();
+    }, 30_000);
+    const loadProveedores = async () => {
+      try {
+        const res = await fetch("/api/papeleria/proveedores", { cache: "no-store" });
+        const json = await res.json();
+        if (json.success) setProveedores(json.data ?? []);
+      } catch {
+        // ignore supplier loading errors
+      }
+    };
+    void loadProveedores();
     const unsub = subscribeFinanzasUpdates(() => fetchData(true));
 
     const handleFocus = () => fetchData();
@@ -237,6 +286,25 @@ export default function CuentasPorPagarPage() {
     setEditingId(null);
     setForm(emptyForm);
     setShowModal(true);
+  }
+
+  function openCreateProvider() {
+    setEditingProviderId(null);
+    setProviderForm(emptyProviderForm);
+    setShowProviderModal(true);
+  }
+
+  function openEditProvider(provider: ProveedorOption) {
+    setEditingProviderId(provider.id);
+    setProviderForm({
+      nombre: provider.nombre,
+      razonSocial: provider.razonSocial ?? "",
+      rnc: provider.rnc ?? "",
+      telefono: provider.telefono ?? "",
+      email: provider.email ?? "",
+      contacto: provider.contacto ?? "",
+    });
+    setShowProviderModal(true);
   }
 
   function openEdit(account: Account) {
@@ -316,6 +384,46 @@ export default function CuentasPorPagarPage() {
       toast.error(err instanceof Error ? err.message : "Error al guardar");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleProviderSave() {
+    if (!providerForm.nombre.trim()) {
+      toast.error("El nombre del proveedor es obligatorio");
+      return;
+    }
+
+    setProviderSaving(true);
+    try {
+      const payload: Record<string, unknown> = {
+        nombre: providerForm.nombre.trim(),
+        razonSocial: providerForm.razonSocial.trim() || null,
+        rnc: providerForm.rnc.trim() || null,
+        telefono: providerForm.telefono.trim() || null,
+        email: providerForm.email.trim() || null,
+        contacto: providerForm.contacto.trim() || null,
+      };
+
+      if (editingProviderId) payload.id = editingProviderId;
+
+      const res = await fetch("/api/papeleria/proveedores", {
+        method: editingProviderId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const json = await res.json();
+      if (!json.success) throw new Error(json.error ?? "Error al guardar proveedor");
+
+      toast.success(editingProviderId ? "Proveedor actualizado" : "Proveedor creado");
+      setShowProviderModal(false);
+      const resProviders = await fetch("/api/papeleria/proveedores", { cache: "no-store" });
+      const provJson = await resProviders.json();
+      if (provJson.success) setProveedores(provJson.data ?? []);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Error al guardar proveedor");
+    } finally {
+      setProviderSaving(false);
     }
   }
 
@@ -832,6 +940,46 @@ export default function CuentasPorPagarPage() {
             )}
 
             <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <Label>Proveedor</Label>
+                <div className="flex items-center gap-1">
+                  <Button type="button" variant="outline" size="sm" onClick={openCreateProvider}>
+                    + Nuevo
+                  </Button>
+                  {form.proveedorId && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const selectedProvider = proveedores.find((provider) => provider.id === form.proveedorId);
+                        if (selectedProvider) openEditProvider(selectedProvider);
+                      }}
+                    >
+                      Editar
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <Select
+                value={form.proveedorId || "none"}
+                onValueChange={(v) => setField("proveedorId", v === "none" ? "" : v)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Sin proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sin proveedor</SelectItem>
+                  {proveedores.map((provider) => (
+                    <SelectItem key={provider.id} value={provider.id}>
+                      {provider.nombre}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
               <Label>Concepto *</Label>
               <Input
                 value={form.concepto}
@@ -954,6 +1102,82 @@ export default function CuentasPorPagarPage() {
             <Button onClick={handleSave} disabled={saving}>
               {saving ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : null}
               {editingId ? "Guardar cambios" : "Crear cuenta"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showProviderModal} onOpenChange={setShowProviderModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingProviderId ? "Editar proveedor" : "Nuevo proveedor"}</DialogTitle>
+            <DialogDescription>
+              Registra o actualiza un proveedor para vincularlo a cuentas por pagar.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1">
+              <Label>Nombre *</Label>
+              <Input
+                value={providerForm.nombre}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, nombre: e.target.value }))}
+                placeholder="Nombre del proveedor"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label>Razón social</Label>
+              <Input
+                value={providerForm.razonSocial}
+                onChange={(e) => setProviderForm((prev) => ({ ...prev, razonSocial: e.target.value }))}
+                placeholder="Opcional"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>RNC</Label>
+                <Input
+                  value={providerForm.rnc}
+                  onChange={(e) => setProviderForm((prev) => ({ ...prev, rnc: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Teléfono</Label>
+                <Input
+                  value={providerForm.telefono}
+                  onChange={(e) => setProviderForm((prev) => ({ ...prev, telefono: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label>Email</Label>
+                <Input
+                  value={providerForm.email}
+                  onChange={(e) => setProviderForm((prev) => ({ ...prev, email: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Contacto</Label>
+                <Input
+                  value={providerForm.contacto}
+                  onChange={(e) => setProviderForm((prev) => ({ ...prev, contacto: e.target.value }))}
+                  placeholder="Opcional"
+                />
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowProviderModal(false)} disabled={providerSaving}>
+              Cancelar
+            </Button>
+            <Button onClick={handleProviderSave} disabled={providerSaving}>
+              {providerSaving ? <RefreshCw className="mr-1 h-4 w-4 animate-spin" /> : null}
+              {editingProviderId ? "Guardar cambios" : "Crear proveedor"}
             </Button>
           </DialogFooter>
         </DialogContent>

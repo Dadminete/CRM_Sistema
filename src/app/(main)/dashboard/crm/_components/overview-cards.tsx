@@ -110,17 +110,41 @@ function CajaPrincipalCard({ data }: { data: CajaPrincipalData | null }) {
   if (!data) return <LoadingCard title="Caja Principal" description="ultimos dias" />;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <div className="flex flex-col gap-1.5">
-          <CardTitle>Caja Principal</CardTitle>
-          <CardDescription>ultimos dias</CardDescription>
+    <Card className="flex flex-col overflow-hidden pb-0">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-fit rounded-lg bg-emerald-500/10 p-2">
+              <Landmark className="size-5 text-emerald-500" />
+            </div>
+            <div>
+              <CardTitle className="text-sm">Caja Principal</CardTitle>
+              <CardDescription>Últimos días</CardDescription>
+            </div>
+          </div>
+          <StatusBadge status={data.estado} />
         </div>
-        <StatusBadge status={data.estado} />
       </CardHeader>
-      <CardContent className="size-full">
-        <ChartContainer className="size-full min-h-24" config={cajaPrincipalChartConfig}>
-          <BarChart accessibilityLayer data={data.ultimosDias} barSize={8}>
+      <CardContent className="flex flex-1 flex-col gap-3 px-4 pb-0">
+        <div className="space-y-0.5">
+          <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Saldo actual</p>
+          <p className="text-3xl font-bold tracking-tight tabular-nums">{formatCurrency(data.balanceActual)}</p>
+        </div>
+        <div className="bg-border h-px" />
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Gastos del mes</p>
+            <p className="text-lg font-semibold text-red-500 tabular-nums">{formatCurrency(data.gastosDelMes)}</p>
+          </div>
+          <div className="space-y-0.5 text-right">
+            <p className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase">Estado</p>
+            <p className="text-sm font-semibold text-emerald-600">{data.estado === "abierta" ? "Activa" : "Cerrada"}</p>
+          </div>
+        </div>
+      </CardContent>
+      <CardContent className="mt-auto flex-1 p-0">
+        <ChartContainer className="size-full min-h-20" config={cajaPrincipalChartConfig}>
+          <BarChart accessibilityLayer data={data.ultimosDias} barSize={8} margin={{ left: 0, right: 0, top: 5 }}>
             <XAxis dataKey="fecha" tickLine={false} tickMargin={10} axisLine={false} hide />
             <ChartTooltip content={<ChartTooltipContent labelFormatter={(label) => `Fecha: ${label}`} />} />
             <Bar
@@ -133,10 +157,6 @@ function CajaPrincipalCard({ data }: { data: CajaPrincipalData | null }) {
           </BarChart>
         </ChartContainer>
       </CardContent>
-      <CardFooter className="flex items-center justify-between">
-        <span className="text-xl font-semibold tabular-nums">{formatCurrency(data.balanceActual)}</span>
-        <span className="text-sm font-medium text-red-500">{formatCurrency(data.gastosDelMes)}</span>
-      </CardFooter>
     </Card>
   );
 }

@@ -1,5 +1,6 @@
 import { and, count, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm";
 
+import { isTransferMovementRecord } from "@/lib/contabilidad/transfer-utils";
 import { db } from "@/lib/db";
 import {
   movimientosContables,
@@ -59,9 +60,13 @@ async function applyCuentaPorPagarPayment(
   if (!cuenta[0]) return;
 
   const montoOriginal = Number(cuenta[0].montoOriginal ?? 0);
-  const montoPendienteActual = Number(cuenta[0].montoPendiente ?? 0);
   const applied = Math.max(0, Number(monto ?? 0));
-  const nuevoPendiente = Math.max(0, montoPendienteActual - applied);
+  const previousPayments = await tx
+    .select({ total: sql<number>`COALESCE(SUM(CAST(${pagosCuentasPorPagar.monto} AS numeric)), 0)` })
+    .from(pagosCuentasPorPagar)
+    .where(eq(pagosCuentasPorPagar.cuentaPorPagarId, cuentaPorPagarId));
+  const totalPagosPrevios = Number(previousPayments[0]?.total ?? 0);
+  const nuevoPendiente = Math.max(0, montoOriginal - (totalPagosPrevios + applied));
   const estado = calcEstado(montoOriginal, nuevoPendiente);
   const fechaPago = (fecha ? String(fecha) : new Date().toISOString()).split("T")[0];
 
@@ -234,13 +239,26 @@ export async function GET(req: Request) {
         .offset(offset),
     ]);
 
+    const filteredMovimientos = (movimientos as Array<Record<string, unknown>>).filter((movement) => {
+      if (!excludeTraspasos || isTransferRequest || isSpecificAccount) {
+        return true;
+      }
+
+      return !isTransferMovementRecord({
+        tipo: String(movement.tipo ?? ""),
+        categoriaId: movement.categoriaId ? String(movement.categoriaId) : null,
+        descripcion: movement.descripcion ? String(movement.descripcion) : null,
+        transferCategoryId: traspasoCatId,
+      });
+    });
+
     const total = countResult[0]?.total ?? 0;
     const totalPages = Math.max(Math.ceil(total / limit), 1);
     const currentPage = Math.floor(offset / limit) + 1;
 
     return jsonResponse({
       success: true,
-      data: movimientos,
+      data: filteredMovimientos,
       pagination: {
         total,
         page: currentPage,
