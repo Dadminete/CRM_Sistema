@@ -1,9 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Evitar que errores de ESLint/TypeScript rompan el build en Vercel
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Evitar que errores de TypeScript rompan el build en Vercel
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -19,7 +16,6 @@ const nextConfig = {
   // Configuración experimental para mejorar rendimiento
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', '@radix-ui/react-popover', '@radix-ui/react-select', '@radix-ui/react-tabs', 'recharts', 'date-fns'],
-    // optimizeCss: true,
     optimizeServerReact: true,
   },
   
@@ -34,9 +30,16 @@ const nextConfig = {
   },
   allowedDevOrigins: [
     "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "http://10.1.1.99:3000",
+    "http://10.1.1.99:3001",
     "http://172.16.0.25:3000",
     "http://172.16.0.25",
     "localhost",
+    "127.0.0.1",
+    "10.1.1.99",
     "172.16.0.25",
   ],
   async redirects() {

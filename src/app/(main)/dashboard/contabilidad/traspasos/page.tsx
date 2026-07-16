@@ -1,11 +1,11 @@
 /* eslint-disable max-lines */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import { ArrowLeftRight, Eye, Pencil, Shuffle } from "lucide-react";
+import { ArrowLeftRight, Eye, Pencil, Shuffle, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -114,37 +114,44 @@ export default function TraspasosPage() {
     [form.destinoTipo, cajasList, bancosList],
   );
 
-  // eslint-disable-next-line complexity
-  const loadData = async (targetPage = page, targetLimit = limit) => {
-    setLoading(true);
-    try {
-      const [cajasRes, bancosRes, trasRes] = await Promise.all([
-        fetch("/api/traspasos/cuentas/cajas").then((r) => r.json()),
-        fetch("/api/traspasos/cuentas/bancos").then((r) => r.json()),
-        fetch(`/api/traspasos?page=${targetPage}&limit=${targetLimit}`).then((r) => r.json()),
-      ]);
+  const loadData = useCallback(
+    // eslint-disable-next-line complexity
+    async (targetPage = page, targetLimit = limit) => {
+      setLoading(true);
+      try {
+        const [cajasRes, bancosRes, trasRes] = await Promise.all([
+          fetch("/api/traspasos/cuentas/cajas").then((r) => r.json()),
+          fetch("/api/traspasos/cuentas/bancos").then((r) => r.json()),
+          fetch(`/api/traspasos?page=${targetPage}&limit=${targetLimit}`).then((r) => r.json()),
+        ]);
 
-      if (cajasRes.success) setCajasList(cajasRes.data ?? []);
-      if (bancosRes.success) setBancosList(bancosRes.data ?? []);
-      if (trasRes.success) {
-        setTraspasosList(trasRes.data ?? []);
-        if (trasRes.pagination) {
-          setTotal(trasRes.pagination.total);
-          setTotalPages(trasRes.pagination.totalPages);
-          setPage(trasRes.pagination.page);
+        if (cajasRes.success) setCajasList(cajasRes.data ?? []);
+        if (bancosRes.success) setBancosList(bancosRes.data ?? []);
+        if (trasRes.success) {
+          setTraspasosList(trasRes.data ?? []);
+          if (trasRes.pagination) {
+            setTotal(trasRes.pagination.total);
+            setTotalPages(trasRes.pagination.totalPages);
+            setPage(trasRes.pagination.page);
+          }
         }
+      } catch (err) {
+        console.error(err);
+        toast.error("No se pudieron cargar los datos de traspasos");
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error(err);
-      toast.error("No se pudieron cargar los datos de traspasos");
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [page, limit],
+  );
 
   useEffect(() => {
-    loadData();
-  }, []);
+    const timer = setTimeout(() => {
+      void loadData();
+    }, 0);
+
+    return () => clearTimeout(timer);
+  }, [loadData]);
 
   const update = (key: string, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
 
@@ -242,6 +249,31 @@ export default function TraspasosPage() {
     }
   };
 
+  const handleDelete = async (traspaso: Traspaso) => {
+    const confirmed = window.confirm(`¿Deseas eliminar el traspaso ${traspaso.numero}?`);
+    if (!confirmed) return;
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/traspasos/${traspaso.id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success("Traspaso anulado");
+        notifyFinanzasDataChanged();
+        await loadData();
+      } else {
+        toast.error(data.error ?? "Error al eliminar");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error al eliminar");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-6 p-4">
       <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -287,7 +319,7 @@ export default function TraspasosPage() {
                       <SelectItem key={c.id} value={c.id}>
                         {form.origenTipo === "caja"
                           ? (c as CuentaCaja).nombre
-                          : `${(c as CuentaBanco).numeroCuenta} (${(c as CuentaBanco).bancoNombre ?? "Banco"})`}
+                          : `${(c as CuentaBanco).numeroCuenta} (${(c as CuentaBanco).bancoNombre})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -313,7 +345,7 @@ export default function TraspasosPage() {
                       <SelectItem key={c.id} value={c.id}>
                         {form.destinoTipo === "caja"
                           ? (c as CuentaCaja).nombre
-                          : `${(c as CuentaBanco).numeroCuenta} (${(c as CuentaBanco).bancoNombre ?? "Banco"})`}
+                          : `${(c as CuentaBanco).numeroCuenta} (${(c as CuentaBanco).bancoNombre})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -424,6 +456,14 @@ export default function TraspasosPage() {
                             onClick={() => handleEdit(t)}
                           >
                             <Pencil className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-red-600"
+                            onClick={() => void handleDelete(t)}
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       </TableCell>

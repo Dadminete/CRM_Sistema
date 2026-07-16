@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { eq, sql } from "drizzle-orm";
 
-import { withAuth, type AuthenticatedUser } from "@/lib/api-auth";
+import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { traspasos, cuentasBancarias, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
@@ -64,33 +64,132 @@ async function getTraspasoCategoryId(tx = db) {
   return created.id;
 }
 
-export const GET = withAuth(async (request: NextRequest, { params }: { params: { id: string } }) => {
-  try {
-    const id = params.id;
-    const result = await db.query.traspasos.findFirst({
-      where: eq(traspasos.id, id),
-    });
-
-    if (!result) {
-      return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
-    }
-
-    return jsonResponse({ success: true, data: result });
-  } catch (error) {
-    console.error("GET /api/traspasos/[id] error", error);
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : String(error) },
-      { status: 500 },
-    );
+export async function resolveTransferRouteId(
+  params: { id?: string } | Promise<{ id?: string }> | undefined,
+): Promise<string | undefined> {
+  if (params && typeof (params as Promise<{ id?: string }>).then === "function") {
+    const resolvedParams = await (params as Promise<{ id?: string }>);
+    return resolvedParams.id;
   }
-});
+
+  return params?.id;
+}
+
+export const GET = withAuth(
+  async (request: NextRequest, { params }: { params: { id: string } | Promise<{ id: string }> }) => {
+    try {
+      const id = await resolveTransferRouteId(params);
+
+      if (!id) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
+
+      const result = await db.query.traspasos.findFirst({
+        where: eq(traspasos.id, id),
+      });
+
+      if (!result) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
+
+      return jsonResponse({ success: true, data: result });
+    } catch (error) {
+      console.error("GET /api/traspasos/[id] error", error);
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
+    }
+  },
+);
+
+export const DELETE = withAuth(
+  async (_request: NextRequest, { params }: { params: { id: string } | Promise<{ id: string }> }) => {
+    try {
+      const id = await resolveTransferRouteId(params);
+
+      if (!id) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
+
+      const existingTransfer = await db.query.traspasos.findFirst({
+        where: eq(traspasos.id, id),
+      });
+
+      if (!existingTransfer) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
+
+      await db.transaction(async (tx) => {
+        const oldMonto = Number(existingTransfer.monto);
+
+        if (existingTransfer.cajaOrigenId) {
+          await tx.execute(
+            sql`UPDATE cajas SET saldo_actual = saldo_actual + ${oldMonto} WHERE id = ${existingTransfer.cajaOrigenId}`,
+          );
+        } else if (existingTransfer.bancoOrigenId) {
+          const bank = await tx.query.cuentasBancarias.findFirst({
+            where: eq(cuentasBancarias.id, existingTransfer.bancoOrigenId),
+          });
+          if (bank?.cuentaContableId) {
+            await tx.execute(
+              sql`UPDATE cuentas_contables SET saldo_actual = saldo_actual + ${oldMonto} WHERE id = ${bank.cuentaContableId}`,
+            );
+          }
+        }
+
+        if (existingTransfer.cajaDestinoId) {
+          await tx.execute(
+            sql`UPDATE cajas SET saldo_actual = saldo_actual - ${oldMonto} WHERE id = ${existingTransfer.cajaDestinoId}`,
+          );
+        } else if (existingTransfer.bancoDestinoId) {
+          const bank = await tx.query.cuentasBancarias.findFirst({
+            where: eq(cuentasBancarias.id, existingTransfer.bancoDestinoId),
+          });
+          if (bank?.cuentaContableId) {
+            await tx.execute(
+              sql`UPDATE cuentas_contables SET saldo_actual = saldo_actual - ${oldMonto} WHERE id = ${bank.cuentaContableId}`,
+            );
+          }
+        }
+
+        await tx
+          .delete(movimientosContables)
+          .where(sql`descripcion LIKE ${`Traspaso ${existingTransfer.numeroTraspaso}:%`}`);
+        await tx.update(traspasos).set({ estado: "anulado" }).where(eq(traspasos.id, id));
+      });
+
+      return NextResponse.json({ success: true, message: "Traspaso anulado" });
+    } catch (error) {
+      console.error("DELETE /api/traspasos/[id] error", error);
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : String(error) },
+        { status: 500 },
+      );
+    }
+  },
+  { requiredPermission: "contabilidad:editar" },
+);
 
 export const PATCH = withAuth(
-  async (request: NextRequest, { params, user }: { params: { id: string }; user: AuthenticatedUser }) => {
+  async (request: NextRequest, { params }: { params: { id: string } | Promise<{ id: string }> }) => {
     try {
-      const id = params.id;
+      const id = await resolveTransferRouteId(params);
+
+      if (!id) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
+
       const body = await request.json();
       const { monto, concepto, fecha, origenTipo, origenId, destinoTipo, destinoId } = body;
+
+      const existingTransfer = await db.query.traspasos.findFirst({
+        where: eq(traspasos.id, id),
+      });
+
+      if (!existingTransfer) {
+        return NextResponse.json({ success: false, error: "Traspaso no encontrado" }, { status: 404 });
+      }
 
       // eslint-disable-next-line complexity
       const result = await db.transaction(async (tx) => {
@@ -99,7 +198,9 @@ export const PATCH = withAuth(
           where: eq(traspasos.id, id),
         });
 
-        if (!existing) throw new Error("Traspaso no encontrado");
+        if (!existing) {
+          throw new Error("Traspaso no encontrado");
+        }
 
         const oldMonto = Number(existing.monto);
 

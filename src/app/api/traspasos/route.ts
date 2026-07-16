@@ -85,7 +85,7 @@ async function generateNumeroTraspaso(tx = db) {
   const last = await tx.execute(
     sql`SELECT numero_traspaso FROM traspasos WHERE numero_traspaso LIKE ${prefix + "%"} ORDER BY numero_traspaso DESC LIMIT 1`,
   );
-  const lastNum = last.rows?.[0]?.numero_traspaso as string | undefined;
+  const lastNum = last.rows[0]?.numero_traspaso as string | undefined;
   const seq = lastNum ? parseInt(lastNum.slice(-5), 10) + 1 : 1;
   return `${prefix}${seq.toString().padStart(5, "0")}`;
 }
@@ -102,6 +102,7 @@ export const GET = withAuth(async (request: NextRequest) => {
     const filters: SQL[] = [];
     if (from) filters.push(gte(traspasos.fechaTraspaso, from));
     if (to) filters.push(lte(traspasos.fechaTraspaso, to));
+    filters.push(sql`${traspasos.estado} != 'anulado'`);
 
     const rows = await db
       .select({
