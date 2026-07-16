@@ -11,8 +11,8 @@ export default function LoginV2() {
     <>
       <div className="mx-auto flex w-full flex-col justify-center space-y-8 sm:w-[350px]">
         <div className="space-y-2 text-center">
-          <h1 className="text-3xl font-medium">Login to your account</h1>
-          <p className="text-muted-foreground text-sm">Please enter your username and password to login.</p>
+          <h1 className="text-3xl font-medium">Inicio de sesion</h1>
+          <p className="text-muted-foreground text-sm">Ingresa tu usuario y contraseña para iniciar sesión.</p>
         </div>
         <div className="space-y-4">
           <LoginForm />
@@ -21,9 +21,9 @@ export default function LoginV2() {
 
       <div className="absolute top-5 flex w-full justify-end px-10">
         <div className="text-muted-foreground text-sm">
-          Don&apos;t have an account?{" "}
+          ¿No tienes una cuenta?{" "}
           <Link className="text-foreground" href="register">
-            Register
+            Regístrate
           </Link>
         </div>
       </div>

@@ -1,9 +1,33 @@
 import { ReactNode } from "react";
 
+import Image from "next/image";
+
 import { Command } from "lucide-react";
 
-import { Separator } from "@/components/ui/separator";
 import { APP_CONFIG } from "@/config/app-config";
+
+import styles from "./layout.module.css";
+
+const carouselSlides = [
+  {
+    src: "/auth-carousel/fiber-network.svg",
+    alt: "Infraestructura de fibra óptica e internet",
+    title: "Fibra óptica",
+    description: "Conectividad estable para redes modernas.",
+  },
+  {
+    src: "/auth-carousel/telecom-tower.svg",
+    alt: "Torre de telecomunicaciones con señal inalámbrica",
+    title: "Telecomunicaciones",
+    description: "Cobertura móvil y enlaces inalámbricos.",
+  },
+  {
+    src: "/auth-carousel/global-network.svg",
+    alt: "Red global de internet y centros conectados",
+    title: "Red global",
+    description: "Servicios digitales conectados en todo momento.",
+  },
+];
 
 export default function Layout({ children }: Readonly<{ children: ReactNode }>) {
   return (
@@ -16,17 +40,31 @@ export default function Layout({ children }: Readonly<{ children: ReactNode }>) 
             <p className="text-sm">Design. Build. Launch. Repeat.</p>
           </div>
 
-          <div className="absolute bottom-10 flex w-full justify-between px-10">
-            <div className="text-primary-foreground flex-1 space-y-1">
-              <h2 className="font-medium">Ready to launch?</h2>
-              <p className="text-sm">Clone the repo, install dependencies, and your dashboard is live in minutes.</p>
-            </div>
-            <Separator orientation="vertical" className="mx-3 !h-auto" />
-            <div className="text-primary-foreground flex-1 space-y-1">
-              <h2 className="font-medium">Need help?</h2>
-              <p className="text-sm">
-                Check out the docs or open an issue on GitHub, community support is just a click away.
-              </p>
+          <div className="absolute right-10 bottom-10 left-10">
+            <div className="overflow-hidden rounded-3xl border border-white/15 bg-white/10 p-4 shadow-2xl backdrop-blur-sm">
+              <div className="relative h-[440px] overflow-hidden rounded-2xl bg-slate-950">
+                {carouselSlides.map((slide, index) => (
+                  <figure
+                    key={slide.title}
+                    className={styles.carouselSlide}
+                    style={{ animationDelay: `${index * 6}s` }}
+                  >
+                    <Image
+                      src={slide.src}
+                      alt={slide.alt}
+                      fill
+                      sizes="(min-width: 1024px) 50vw, 100vw"
+                      className="object-cover"
+                      priority={index === 0}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+                    <figcaption className="text-primary-foreground absolute right-0 bottom-0 left-0 p-5">
+                      <p className="text-xs tracking-[0.28em] text-white/70 uppercase">{slide.title}</p>
+                      <p className="mt-1 max-w-sm text-sm text-white/90">{slide.description}</p>
+                    </figcaption>
+                  </figure>
+                ))}
+              </div>
             </div>
           </div>
         </div>

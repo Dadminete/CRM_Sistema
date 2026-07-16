@@ -1,0 +1,36 @@
+<svg width="1200" height="800" viewBox="0 0 1200 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="800" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#081225" />
+      <stop offset="1" stop-color="#0F4C81" />
+    </linearGradient>
+    <linearGradient id="fiber" x1="180" y1="640" x2="1020" y2="140" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.15" />
+      <stop offset="0.5" stop-color="#7DD3FC" />
+      <stop offset="1" stop-color="#E0F2FE" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" rx="48" fill="url(#bg)" />
+  <circle cx="940" cy="160" r="120" fill="#38BDF8" fill-opacity="0.18" />
+  <circle cx="240" cy="160" r="92" fill="#22C55E" fill-opacity="0.18" />
+  <path d="M160 640C320 560 420 500 540 470C640 445 720 388 830 280C900 210 990 184 1080 170" stroke="url(#fiber)" stroke-width="18" stroke-linecap="round" />
+  <path d="M140 620C308 538 418 474 540 444C648 417 732 364 846 252C920 180 1006 156 1088 144" stroke="#A5F3FC" stroke-opacity="0.35" stroke-width="6" stroke-linecap="round" />
+  <g filter="url(#shadow)">
+    <rect x="180" y="500" width="220" height="96" rx="24" fill="#0B1120" fill-opacity="0.85" stroke="#38BDF8" stroke-opacity="0.55" />
+    <rect x="220" y="458" width="140" height="76" rx="20" fill="#111827" stroke="#93C5FD" stroke-opacity="0.45" />
+    <rect x="255" y="530" width="70" height="12" rx="6" fill="#67E8F9" />
+    <circle cx="290" cy="488" r="16" fill="#22C55E" />
+    <circle cx="290" cy="488" r="34" stroke="#22C55E" stroke-opacity="0.35" stroke-width="8" />
+  </g>
+  <g opacity="0.9">
+    <circle cx="668" cy="354" r="8" fill="#E0F2FE" />
+    <circle cx="790" cy="292" r="8" fill="#E0F2FE" />
+    <circle cx="902" cy="218" r="8" fill="#E0F2FE" />
+    <circle cx="1020" cy="170" r="8" fill="#E0F2FE" />
+  </g>
+  <defs>
+    <filter id="shadow" x="120" y="420" width="360" height="180" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.35" />
+    </filter>
+  </defs>
+</svg>
