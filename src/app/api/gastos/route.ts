@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { and, eq, isNull, ne } from "drizzle-orm";
 
+import { isTransferMovementRecord } from "@/lib/contabilidad/transfer-utils";
 import { db } from "@/lib/db";
 import {
   pagosCuentasPorPagar,

@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { Pencil, Plus, Save, Trash2 } from "lucide-react";
+import { CirclePause, CirclePlay, Pencil, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +92,7 @@ export default function AjustesFinancierosPage() {
     observaciones: "",
   });
 
-  const fetchRules = async () => {
+  const fetchRules = useCallback(async () => {
     try {
       const res = await fetch("/api/contabilidad/finanzas/reglas", { cache: "no-store" });
       const json: RulesResponse = await res.json();
@@ -112,9 +112,9 @@ export default function AjustesFinancierosPage() {
     } catch {
       toast.error("Error de conexion al cargar reglas");
     }
-  };
+  }, []);
 
-  const fetchFixedExpenses = async () => {
+  const fetchFixedExpenses = useCallback(async () => {
     try {
       const res = await fetch("/api/contabilidad/gastos-fijos", { cache: "no-store" });
       const json: FixedExpensesResponse = await res.json();
@@ -129,7 +129,7 @@ export default function AjustesFinancierosPage() {
     } catch {
       toast.error("Error de conexion al cargar gastos fijos");
     }
-  };
+  }, [selectedFixedId]);
 
   useEffect(() => {
     const load = async () => {
@@ -138,7 +138,7 @@ export default function AjustesFinancierosPage() {
       setLoading(false);
     };
     load();
-  }, []);
+  }, [fetchFixedExpenses, fetchRules]);
 
   const saveRules = async () => {
     setSaving(true);
@@ -194,8 +194,8 @@ export default function AjustesFinancierosPage() {
         nombre: fixedForm.nombre,
         monto: Number(fixedForm.monto),
         diaVencimiento: Number(fixedForm.diaVencimiento),
-        descripcion: fixedForm.descripcion || null,
-        observaciones: fixedForm.observaciones || null,
+        descripcion: fixedForm.descripcion.trim() ? fixedForm.descripcion : null,
+        observaciones: fixedForm.observaciones.trim() ? fixedForm.observaciones : null,
       };
 
       const res = await fetch("/api/contabilidad/gastos-fijos", {
@@ -239,6 +239,37 @@ export default function AjustesFinancierosPage() {
     }
   };
 
+  const togglePauseFixedExpense = async (fixed: FixedExpense) => {
+    const action = fixed.activo ? "pausar" : "reactivar";
+    if (!confirm(`¿${action === "pausar" ? "Pausar" : "Reactivar"} este gasto fijo?`)) return;
+
+    try {
+      const res = await fetch(`/api/contabilidad/gastos-fijos`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: fixed.id,
+          nombre: fixed.nombre,
+          monto: fixed.monto,
+          diaVencimiento: fixed.diaVencimiento,
+          descripcion: fixed.descripcion,
+          observaciones: fixed.observaciones,
+          activo: !fixed.activo,
+        }),
+      });
+      const json = await res.json();
+      if (!json.success) {
+        toast.error(json.error ?? `No se pudo ${action}`);
+        return;
+      }
+      toast.success(action === "pausar" ? "Gasto fijo pausado" : "Gasto fijo reactivado");
+      await fetchFixedExpenses();
+      notifyFinanzasDataChanged();
+    } catch {
+      toast.error(`Error de conexion al ${action} gasto fijo`);
+    }
+  };
+
   const editFixedExpense = (fixed: FixedExpense) => {
     setEditingFixedId(fixed.id);
     setFixedForm({
@@ -250,10 +281,10 @@ export default function AjustesFinancierosPage() {
     });
   };
 
-  const selectedFixed = useMemo(
-    () => fixedData?.fixedExpenses.find((f) => f.id === selectedFixedId) ?? null,
-    [fixedData, selectedFixedId],
-  );
+  const trackedFixedExpenses = useMemo(() => {
+    const matches = (fixedData?.fixedExpenses ?? []).filter((expense) => /claro|starlink/i.test(expense.nombre));
+    return matches.sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+  }, [fixedData]);
 
   return (
     <div className="flex flex-col gap-4 md:gap-6">
@@ -401,22 +432,22 @@ export default function AjustesFinancierosPage() {
         <Card className="xl:col-span-2">
           <CardHeader>
             <CardTitle>Gastos fijos registrados</CardTitle>
-            <CardDescription>Gestiona y analiza su cumplimiento mensual.</CardDescription>
+            <CardDescription>Lista clara de los pagos recurrentes del mes y su estado actual.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead className="text-right">Monto</TableHead>
-                    <TableHead className="text-right">Vence</TableHead>
-                    <TableHead className="text-right">Estado Mes</TableHead>
+                    <TableHead>Concepto</TableHead>
+                    <TableHead className="text-right">Monto mensual</TableHead>
+                    <TableHead className="text-right">Vence el día</TableHead>
+                    <TableHead className="text-right">Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {fixedData?.fixedExpenses?.length ? (
+                  {fixedData?.fixedExpenses && fixedData.fixedExpenses.length > 0 ? (
                     fixedData.fixedExpenses.map((fixed) => (
                       <TableRow key={fixed.id} className={fixed.id === selectedFixedId ? "bg-muted/40" : ""}>
                         <TableCell>
@@ -426,16 +457,27 @@ export default function AjustesFinancierosPage() {
                           >
                             {fixed.nombre}
                           </button>
+                          <div className="text-muted-foreground mt-1 text-xs">
+                            {fixed.descripcion ?? "Sin descripción adicional"}
+                          </div>
                         </TableCell>
                         <TableCell className="text-right">{formatCurrency(fixed.monto)}</TableCell>
-                        <TableCell className="text-right">Dia {fixed.diaVencimiento}</TableCell>
+                        <TableCell className="text-right">{fixed.diaVencimiento}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant={fixed.paidCurrentMonth ? "secondary" : "destructive"}>
-                            {fixed.paidCurrentMonth ? "Pagado" : "Pendiente"}
+                            {fixed.paidCurrentMonth ? "Pagado este mes" : "Pendiente"}
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => togglePauseFixedExpense(fixed)}
+                              title={fixed.activo ? "Pausar gasto" : "Reactivar gasto"}
+                            >
+                              {fixed.activo ? <CirclePause className="h-4 w-4" /> : <CirclePlay className="h-4 w-4" />}
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => editFixedExpense(fixed)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
@@ -449,7 +491,7 @@ export default function AjustesFinancierosPage() {
                   ) : (
                     <TableRow>
                       <TableCell colSpan={5} className="text-muted-foreground text-center">
-                        No hay gastos fijos registrados.
+                        Aún no registras gastos fijos. Agrega uno para ver su seguimiento aquí.
                       </TableCell>
                     </TableRow>
                   )}
@@ -461,25 +503,33 @@ export default function AjustesFinancierosPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Que mejorar</CardTitle>
-            <CardDescription>Recomendaciones automáticas por tus gastos fijos.</CardDescription>
+            <CardTitle>Qué mejorar</CardTitle>
+            <CardDescription>
+              Consejos claros para bajar costos o evitar atrasos en tus pagos recurrentes.
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {fixedData?.recommendations?.map((rec, idx) => (
-              <div key={`${rec.title}-${idx}`} className="rounded-md border p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium">{rec.title}</p>
-                  <Badge
-                    variant={
-                      rec.priority === "alta" ? "destructive" : rec.priority === "media" ? "outline" : "secondary"
-                    }
-                  >
-                    {rec.priority}
-                  </Badge>
+            {fixedData?.recommendations && fixedData.recommendations.length > 0 ? (
+              fixedData.recommendations.map((rec) => (
+                <div key={`${rec.title}-${rec.priority}`} className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-medium">{rec.title}</p>
+                    <Badge
+                      variant={
+                        rec.priority === "alta" ? "destructive" : rec.priority === "media" ? "outline" : "secondary"
+                      }
+                    >
+                      {rec.priority === "alta" ? "Alta prioridad" : rec.priority === "media" ? "Media" : "Baja"}
+                    </Badge>
+                  </div>
+                  <p className="text-muted-foreground mt-1 text-sm">{rec.detail}</p>
                 </div>
-                <p className="text-muted-foreground mt-1 text-sm">{rec.detail}</p>
+              ))
+            ) : (
+              <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+                No hay recomendaciones por el momento. Cuando el sistema detecte tendencias, aparecerán aquí.
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       </div>
@@ -488,67 +538,129 @@ export default function AjustesFinancierosPage() {
         <CardHeader>
           <CardTitle>Historial mensual de pagos</CardTitle>
           <CardDescription>
-            {selectedFixed ? `Detalle de ${selectedFixed.nombre}` : "Selecciona un gasto fijo para ver historial"}
+            Lo que se ha pagado hasta ahora por las principales fuentes de ingreso: Claro Internet y Starlink Internet.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {selectedFixed ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="overflow-hidden rounded-md border">
+          {trackedFixedExpenses.length ? (
+            <div className="space-y-4">
+              <div className="bg-muted/20 rounded-lg border p-4">
+                <div className="mb-3 grid gap-3 md:grid-cols-3">
+                  <div>
+                    <div className="text-muted-foreground text-xs">Fuentes principales</div>
+                    <div className="text-lg font-semibold">{trackedFixedExpenses.length}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">Pagos registrados</div>
+                    <div className="text-lg font-semibold">
+                      {trackedFixedExpenses.reduce(
+                        (sum, fixed) => sum + fixed.monthlyHistory.reduce((inner, item) => inner + item.count, 0),
+                        0,
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground text-xs">Total acumulado</div>
+                    <div className="text-lg font-semibold">
+                      {formatCurrency(
+                        trackedFixedExpenses.reduce(
+                          (sum, fixed) => sum + fixed.monthlyHistory.reduce((inner, item) => inner + item.total, 0),
+                          0,
+                        ),
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-background overflow-hidden rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Mes</TableHead>
-                      <TableHead className="text-right">Total Pagado</TableHead>
+                      <TableHead>Servicio</TableHead>
+                      <TableHead className="text-right">Monto mensual</TableHead>
                       <TableHead className="text-right">Pagos</TableHead>
+                      <TableHead className="text-right">Total pagado</TableHead>
+                      <TableHead className="text-right">Estado</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedFixed.monthlyHistory.map((h) => (
-                      <TableRow key={h.month}>
-                        <TableCell>{h.month}</TableCell>
-                        <TableCell className="text-right">{formatCurrency(h.total)}</TableCell>
-                        <TableCell className="text-right">{h.count}</TableCell>
-                      </TableRow>
-                    ))}
+                    {trackedFixedExpenses.map((fixed) => {
+                      const totalPayments = fixed.monthlyHistory.reduce((sum, item) => sum + item.count, 0);
+                      const totalPaid = fixed.monthlyHistory.reduce((sum, item) => sum + item.total, 0);
+
+                      return (
+                        <TableRow key={fixed.id}>
+                          <TableCell>
+                            <div className="font-medium">{fixed.nombre}</div>
+                            <div className="text-muted-foreground text-xs">
+                              {fixed.descripcion ?? "Servicio recurrente"}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(fixed.monto)}</TableCell>
+                          <TableCell className="text-right">{totalPayments}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(totalPaid)}</TableCell>
+                          <TableCell className="text-right">
+                            <Badge variant={fixed.activo ? "secondary" : "outline"}>
+                              {fixed.activo ? "Activo" : "Pausado"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
 
-              <div className="overflow-hidden rounded-md border">
+              <div className="bg-background overflow-hidden rounded-md border">
+                <div className="bg-muted/40 border-b px-4 py-3 text-sm font-medium">Detalle mensual</div>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead className="text-right">Metodo</TableHead>
+                      <TableHead>Mes</TableHead>
+                      <TableHead>Claro Internet</TableHead>
+                      <TableHead>Starlink Internet</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedFixed.monthlyHistory.flatMap((h) => h.pagos).length ? (
-                      selectedFixed.monthlyHistory
-                        .flatMap((h) => h.pagos)
-                        .slice(0, 20)
-                        .map((p) => (
-                          <TableRow key={p.id}>
-                            <TableCell>{p.fechaPago}</TableCell>
-                            <TableCell className="text-right">{formatCurrency(p.montoPagado)}</TableCell>
-                            <TableCell className="text-right capitalize">{p.metodoPago}</TableCell>
+                    {(() => {
+                      const months = Array.from(
+                        new Set(
+                          trackedFixedExpenses.flatMap((fixed) => fixed.monthlyHistory.map((item) => item.month)),
+                        ),
+                      ).sort();
+
+                      return months.map((month) => {
+                        const claro = trackedFixedExpenses.find((fixed) =>
+                          fixed.nombre.toLowerCase().includes("claro"),
+                        );
+                        const starlink = trackedFixedExpenses.find((fixed) =>
+                          fixed.nombre.toLowerCase().includes("starlink"),
+                        );
+                        const claroMonth = claro?.monthlyHistory.find((item) => item.month === month);
+                        const starlinkMonth = starlink?.monthlyHistory.find((item) => item.month === month);
+
+                        return (
+                          <TableRow key={month}>
+                            <TableCell>{month}</TableCell>
+                            <TableCell>
+                              {claroMonth ? `${formatCurrency(claroMonth.total)} (${claroMonth.count})` : "—"}
+                            </TableCell>
+                            <TableCell>
+                              {starlinkMonth ? `${formatCurrency(starlinkMonth.total)} (${starlinkMonth.count})` : "—"}
+                            </TableCell>
                           </TableRow>
-                        ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={3} className="text-muted-foreground text-center">
-                          Sin pagos registrados en el periodo.
-                        </TableCell>
-                      </TableRow>
-                    )}
+                        );
+                      });
+                    })()}
                   </TableBody>
                 </Table>
               </div>
             </div>
           ) : (
-            <p className="text-muted-foreground text-sm">No hay gasto fijo seleccionado.</p>
+            <div className="text-muted-foreground rounded-md border border-dashed p-4 text-sm">
+              No hay información disponible para Claro Internet o Starlink Internet todavía.
+            </div>
           )}
         </CardContent>
       </Card>
