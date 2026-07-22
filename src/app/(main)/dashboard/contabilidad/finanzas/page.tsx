@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { AlertTriangle, CheckCircle2, RefreshCcw, Target } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, RefreshCcw, Target } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, XAxis } from "recharts";
 import { toast } from "sonner";
 
@@ -10,10 +10,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { subscribeFinanzasUpdates } from "@/lib/finanzas-sync";
+
+import { buildCategoryModalData, type CategoryModalData } from "./category-modal-utils";
+import { getCategoryTrendState } from "./trend-utils";
 
 type InsightItem = {
   title: string;
@@ -62,6 +67,20 @@ type FinanceApiResponse = {
       targetSavingsRate: number;
       maxExpenseRatio: number;
     };
+    currentMonth: {
+      ingresos: number;
+      gastos: number;
+      balance: number;
+      savingsRate: number;
+      expenseRatio: number;
+      healthScore: number;
+      estadoFinanciero: "saludable" | "estable" | "en_riesgo";
+    };
+    currentYear: {
+      ingresos: number;
+      gastos: number;
+      balance: number;
+    };
     strengths: InsightItem[];
     weaknesses: InsightItem[];
     recommendations: RecommendationItem[];
@@ -81,6 +100,14 @@ type FinanceApiResponse = {
       increasing3m: boolean;
       decreasing3m: boolean;
       series: number[];
+      currentMonthTotal: number;
+      currentMonthPercentage: number;
+      currentMonthItems: {
+        id: string;
+        descripcion: string | null;
+        fecha: string;
+        monto: number;
+      }[];
     }[];
     topExpenseCategories: {
       id: string;
@@ -88,6 +115,12 @@ type FinanceApiResponse = {
       nombre: string;
       total: number;
       percentage: number;
+      items: {
+        id: string;
+        descripcion: string | null;
+        fecha: string;
+        monto: number;
+      }[];
     }[];
     monthlyTrend: {
       month: string;
@@ -126,6 +159,10 @@ export default function FinanzasPage() {
   const [days, setDays] = useState("30");
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<FinanceApiResponse["data"] | null>(null);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [categoryModalData, setCategoryModalData] = useState<CategoryModalData | null>(null);
+  const [modalPage, setModalPage] = useState(1);
+  const [modalPageSize, setModalPageSize] = useState(8);
 
   const fetchFinance = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -164,7 +201,11 @@ export default function FinanzasPage() {
   );
 
   useEffect(() => {
-    fetchFinance();
+    const timeoutId = window.setTimeout(() => {
+      void fetchFinance();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [fetchFinance]);
 
   useEffect(() => {
@@ -240,6 +281,36 @@ export default function FinanzasPage() {
     });
   }, [data]);
 
+  const openCategoryModal = useCallback(
+    (categoryName: string, source: "expense" | "trend") => {
+      if (!data) return;
+
+      const builtData = buildCategoryModalData({
+        categoryName,
+        kind: source,
+        topExpenseCategories: data.topExpenseCategories,
+        monthlyCategoryTrends: data.monthlyCategoryTrends,
+        monthlyTrend: data.monthlyTrend,
+      });
+
+      if (!builtData) return;
+
+      setCategoryModalData(builtData);
+      setCategoryModalOpen(true);
+      setModalPage(1);
+      setModalPageSize(8);
+    },
+    [data],
+  );
+
+  const totalModalPages = categoryModalData?.currentMonthItems.length
+    ? Math.max(1, Math.ceil(categoryModalData.currentMonthItems.length / modalPageSize))
+    : 1;
+
+  const pagedModalItems = categoryModalData?.currentMonthItems.length
+    ? categoryModalData.currentMonthItems.slice((modalPage - 1) * modalPageSize, modalPage * modalPageSize)
+    : [];
+
   return (
     <div className="flex flex-col gap-4 md:gap-6">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -265,11 +336,11 @@ export default function FinanzasPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Ingresos</CardDescription>
-            <CardTitle>{loading || !data ? "..." : formatCurrency(data.kpis.ingresos)}</CardTitle>
+            <CardDescription>Ingresos del mes</CardDescription>
+            <CardTitle>{loading || !data ? "..." : formatCurrency(data.currentMonth.ingresos)}</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartContainer className="h-20 w-full" config={ingresoChartConfig}>
@@ -291,8 +362,8 @@ export default function FinanzasPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Gastos</CardDescription>
-            <CardTitle>{loading || !data ? "..." : formatCurrency(data.kpis.gastos)}</CardTitle>
+            <CardDescription>Gastos del mes</CardDescription>
+            <CardTitle>{loading || !data ? "..." : formatCurrency(data.currentMonth.gastos)}</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartContainer className="h-20 w-full" config={gastoChartConfig}>
@@ -314,8 +385,8 @@ export default function FinanzasPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Balance</CardDescription>
-            <CardTitle>{loading || !data ? "..." : formatCurrency(data.kpis.balance)}</CardTitle>
+            <CardDescription>Balance del mes</CardDescription>
+            <CardTitle>{loading || !data ? "..." : formatCurrency(data.currentMonth.balance)}</CardTitle>
           </CardHeader>
           <CardContent>
             <ChartContainer className="h-20 w-full" config={balanceChartConfig}>
@@ -337,14 +408,14 @@ export default function FinanzasPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Salud Financiera</CardDescription>
+            <CardDescription>Salud Financiera del mes</CardDescription>
             <CardTitle className="flex items-center gap-2">
-              {loading || !data ? "..." : `${data.summary.healthScore}/100`}
+              {loading || !data ? "..." : `${data.currentMonth.healthScore}/100`}
               {!loading && data && <Badge variant="outline">{estadoLabel}</Badge>}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Progress value={loading || !data ? 0 : data.summary.healthScore} />
+            <Progress value={loading || !data ? 0 : data.currentMonth.healthScore} />
             <ChartContainer className="mt-3 h-20 w-full" config={saludChartConfig}>
               <AreaChart data={monthlyHealthData} margin={{ left: 0, right: 0, top: 5, bottom: 0 }}>
                 <CartesianGrid vertical={false} />
@@ -362,6 +433,28 @@ export default function FinanzasPage() {
             </ChartContainer>
           </CardContent>
         </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Resumen anual</CardDescription>
+            <CardTitle>{loading || !data ? "..." : formatCurrency(data.currentYear.ingresos)}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Ingresos año</span>
+              <span className="font-medium">
+                {loading || !data ? "..." : formatCurrency(data.currentYear.ingresos)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Gastos año</span>
+              <span className="font-medium">{loading || !data ? "..." : formatCurrency(data.currentYear.gastos)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Balance año</span>
+              <span className="font-medium">{loading || !data ? "..." : formatCurrency(data.currentYear.balance)}</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -373,9 +466,9 @@ export default function FinanzasPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!loading && data?.strengths?.length ? (
-              data.strengths.map((item, index) => (
-                <div key={`${item.title}-${index}`} className="rounded-md border p-3">
+            {!loading && data?.strengths.length ? (
+              data.strengths.map((item) => (
+                <div key={`${item.title}-${item.detail}`} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{item.title}</p>
                     {item.metric ? <Badge variant="secondary">{item.metric}</Badge> : null}
@@ -397,9 +490,9 @@ export default function FinanzasPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!loading && data?.weaknesses?.length ? (
-              data.weaknesses.map((item, index) => (
-                <div key={`${item.title}-${index}`} className="rounded-md border p-3">
+            {!loading && data?.weaknesses.length ? (
+              data.weaknesses.map((item) => (
+                <div key={`${item.title}-${item.detail}`} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{item.title}</p>
                     {item.metric ? <Badge variant="destructive">{item.metric}</Badge> : null}
@@ -423,9 +516,9 @@ export default function FinanzasPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!loading && data?.recommendations?.length ? (
-              data.recommendations.map((item, index) => (
-                <div key={`${item.title}-${index}`} className="rounded-md border p-3">
+            {!loading && data?.recommendations.length ? (
+              data.recommendations.map((item) => (
+                <div key={`${item.title}-${item.action}`} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{item.title}</p>
                     <Badge variant="outline" className="uppercase">
@@ -459,9 +552,13 @@ export default function FinanzasPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {!loading && data?.topExpenseCategories?.length ? (
+                  {!loading && data?.topExpenseCategories.length ? (
                     data.topExpenseCategories.map((row) => (
-                      <TableRow key={row.id || row.nombre}>
+                      <TableRow
+                        key={row.id || row.nombre}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => openCategoryModal(row.nombre, "expense")}
+                      >
                         <TableCell>{row.nombre}</TableCell>
                         <TableCell className="text-right">{formatCurrency(row.total)}</TableCell>
                         <TableCell className="text-right">{row.percentage.toFixed(2)}%</TableCell>
@@ -488,9 +585,9 @@ export default function FinanzasPage() {
             <CardDescription>Analisis inteligente de comportamiento reciente.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {!loading && data?.monthlyPatterns?.length ? (
-              data.monthlyPatterns.map((pattern, index) => (
-                <div key={`${pattern.title}-${index}`} className="rounded-md border p-3">
+            {!loading && data?.monthlyPatterns.length ? (
+              data.monthlyPatterns.map((pattern) => (
+                <div key={`${pattern.title}-${pattern.detail}`} className="rounded-md border p-3">
                   <div className="flex items-center justify-between gap-3">
                     <p className="font-medium">{pattern.title}</p>
                     <Badge variant={pattern.type === "positive" ? "secondary" : "destructive"}>
@@ -511,7 +608,7 @@ export default function FinanzasPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Tendencia por categoria</CardTitle>
-            <CardDescription>Comparacion del ultimo mes vs el mes anterior.</CardDescription>
+            <CardDescription>Comparación del último mes vs. el mes anterior.</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="overflow-hidden rounded-md border">
@@ -524,16 +621,26 @@ export default function FinanzasPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {!loading && data?.monthlyCategoryTrends?.length ? (
+                  {!loading && data?.monthlyCategoryTrends.length ? (
                     data.monthlyCategoryTrends.map((row) => (
-                      <TableRow key={row.categoria}>
+                      <TableRow
+                        key={row.categoria}
+                        className="hover:bg-muted/50 cursor-pointer"
+                        onClick={() => openCategoryModal(row.categoria, "trend")}
+                      >
                         <TableCell>{row.categoria}</TableCell>
                         <TableCell className="text-right">{row.changePct.toFixed(2)}%</TableCell>
                         <TableCell className="text-right">
                           <Badge
-                            variant={row.increasing3m ? "destructive" : row.decreasing3m ? "secondary" : "outline"}
+                            variant={
+                              getCategoryTrendState(row.changePct) === "Sube"
+                                ? "destructive"
+                                : getCategoryTrendState(row.changePct) === "Baja"
+                                  ? "secondary"
+                                  : "outline"
+                            }
                           >
-                            {row.increasing3m ? "Sube 3M" : row.decreasing3m ? "Baja 3M" : "Mixto"}
+                            {getCategoryTrendState(row.changePct)}
                           </Badge>
                         </TableCell>
                       </TableRow>
@@ -551,6 +658,139 @@ export default function FinanzasPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={categoryModalOpen} onOpenChange={setCategoryModalOpen}>
+        <DialogContent className="max-h-[92vh] w-[95vw] max-w-5xl overflow-y-auto p-5 sm:p-6">
+          <DialogHeader>
+            <DialogTitle>{categoryModalData?.name ?? "Detalle de categoría"}</DialogTitle>
+            <DialogDescription>
+              {categoryModalData?.source === "expense"
+                ? "Detalle del gasto mensual y movimientos asociados a esta categoría."
+                : "Tendencia mensual y movimientos del mes actual para esta categoría."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {categoryModalData ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border p-3">
+                <div>
+                  <p className="font-medium">{categoryModalData.name}</p>
+                  <p className="text-muted-foreground text-sm">
+                    Total del mes actual: {formatCurrency(categoryModalData.currentMonthTotal)} (
+                    {categoryModalData.currentMonthPercentage.toFixed(2)}%)
+                  </p>
+                </div>
+                {categoryModalData.changePct !== null ? (
+                  <Badge variant={categoryModalData.changePct >= 0 ? "secondary" : "outline"}>
+                    {categoryModalData.changePct >= 0 ? "+" : ""}
+                    {categoryModalData.changePct.toFixed(2)}%
+                  </Badge>
+                ) : null}
+              </div>
+
+              {categoryModalData.trendSeries.length ? (
+                <div className="rounded-md border p-3">
+                  <p className="mb-3 font-medium">Tendencia mensual</p>
+                  <ChartContainer className="h-40 w-full" config={gastoChartConfig}>
+                    <AreaChart
+                      data={categoryModalData.trendMonths.map((month, index) => ({
+                        month,
+                        total: categoryModalData.trendSeries[index] ?? 0,
+                      }))}
+                      margin={{ left: 0, right: 0, top: 5, bottom: 0 }}
+                    >
+                      <CartesianGrid vertical={false} />
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} hide />
+                      <ChartTooltip content={<ChartTooltipContent hideIndicator />} />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke="var(--color-gastos)"
+                        fill="var(--color-gastos)"
+                        fillOpacity={0.15}
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                </div>
+              ) : null}
+
+              <div className="overflow-hidden rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Descripción</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagedModalItems.length ? (
+                      pagedModalItems.map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.descripcion ?? "Sin descripción"}</TableCell>
+                          <TableCell>
+                            {new Date(item.fecha).toLocaleDateString("es-DO", { dateStyle: "medium" })}
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.monto)}</TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-muted-foreground text-center">
+                          Sin movimientos para este mes.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-muted-foreground text-sm">
+                  Página {modalPage} de {totalModalPages} · {categoryModalData.currentMonthItems.length} movimientos
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={`${modalPageSize}`}
+                    onValueChange={(value) => {
+                      setModalPageSize(Number(value));
+                      setModalPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="h-9 w-24">
+                      <SelectValue placeholder="8" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="8">8</SelectItem>
+                      <SelectItem value="15">15</SelectItem>
+                      <SelectItem value="30">30</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setModalPage((page) => Math.max(1, page - 1))}
+                      disabled={modalPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setModalPage((page) => Math.min(totalModalPages, page + 1))}
+                      disabled={modalPage === totalModalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

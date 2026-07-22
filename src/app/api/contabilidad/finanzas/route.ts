@@ -57,10 +57,8 @@ async function loadPersistedRules() {
   try {
     const parsed = JSON.parse(existing[0].valor);
     return {
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      sourceDocument: parsed?.sourceDocument?.trim() || FINANCE_RULE_PROFILE.sourceDocument,
-      // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-      version: parsed?.version?.trim() || FINANCE_RULE_PROFILE.version,
+      sourceDocument: parsed?.sourceDocument?.trim() ?? FINANCE_RULE_PROFILE.sourceDocument,
+      version: parsed?.version?.trim() ?? FINANCE_RULE_PROFILE.version,
       goals: {
         targetSavingsRate: Number(parsed?.goals?.targetSavingsRate ?? FINANCE_RULE_PROFILE.goals.targetSavingsRate),
         maxExpenseRatio: Number(parsed?.goals?.maxExpenseRatio ?? FINANCE_RULE_PROFILE.goals.maxExpenseRatio),
@@ -111,12 +109,24 @@ export async function GET(req: Request) {
     const periodStart = new Date(now);
     periodStart.setDate(now.getDate() - (days - 1));
 
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    const currentYearStart = new Date(now.getFullYear(), 0, 1);
+    const currentYearEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
     const sixMonthsStart = new Date(now.getFullYear(), now.getMonth() - 5, 1);
 
     const traspasoCatId = traspasoCatRows[0]?.id ?? null;
     const traspasoFilter = traspasoCatId ? sql`AND mc.categoria_id <> ${traspasoCatId}` : sql``;
 
-    const [totalsRaw, topCategoriesRaw, monthlyTrendRaw, receivablesRaw, monthlyCategoryRaw] = await Promise.all([
+    const [
+      totalsRaw,
+      monthlyTrendRaw,
+      receivablesRaw,
+      monthlyCategoryRaw,
+      currentMonthTotalsRaw,
+      currentMonthExpenseRowsRaw,
+      currentYearTotalsRaw,
+    ] = await Promise.all([
       db.execute(sql`
         SELECT
           COALESCE(SUM(CASE WHEN LOWER(mc.tipo) = 'ingreso' THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) AS ingresos,
@@ -125,22 +135,6 @@ export async function GET(req: Request) {
         WHERE mc.fecha >= ${periodStart.toISOString()}
           AND mc.fecha <= ${now.toISOString()}
           ${traspasoFilter}
-      `),
-      db.execute(sql`
-        SELECT
-          cc.id,
-          cc.codigo,
-          cc.nombre,
-          COALESCE(SUM(CAST(mc.monto AS DECIMAL)), 0) AS total
-        FROM movimientos_contables mc
-        LEFT JOIN categorias_cuentas cc ON cc.id = mc.categoria_id
-        WHERE mc.fecha >= ${periodStart.toISOString()}
-          AND mc.fecha <= ${now.toISOString()}
-          AND LOWER(mc.tipo) IN ('gasto', 'egreso')
-          ${traspasoFilter}
-        GROUP BY cc.id, cc.codigo, cc.nombre
-        ORDER BY total DESC
-        LIMIT 5
       `),
       db.execute(sql`
         SELECT
@@ -176,12 +170,65 @@ export async function GET(req: Request) {
         GROUP BY DATE_TRUNC('month', mc.fecha), cc.nombre
         ORDER BY DATE_TRUNC('month', mc.fecha) ASC, total DESC
       `),
+      db.execute(sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN LOWER(mc.tipo) = 'ingreso' THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) AS ingresos,
+          COALESCE(SUM(CASE WHEN LOWER(mc.tipo) IN ('gasto', 'egreso') THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) AS gastos
+        FROM movimientos_contables mc
+        WHERE mc.fecha >= ${currentMonthStart.toISOString()}
+          AND mc.fecha <= ${currentMonthEnd.toISOString()}
+          ${traspasoFilter}
+      `),
+      db.execute(sql`
+        SELECT
+          mc.id,
+          mc.fecha,
+          mc.descripcion,
+          CAST(mc.monto AS DECIMAL) AS monto,
+          cc.id AS categoria_id,
+          cc.codigo AS categoria_codigo,
+          cc.nombre AS categoria_nombre
+        FROM movimientos_contables mc
+        LEFT JOIN categorias_cuentas cc ON cc.id = mc.categoria_id
+        WHERE mc.fecha >= ${currentMonthStart.toISOString()}
+          AND mc.fecha <= ${currentMonthEnd.toISOString()}
+          AND LOWER(mc.tipo) IN ('gasto', 'egreso')
+          ${traspasoFilter}
+        ORDER BY cc.nombre ASC, mc.fecha DESC, CAST(mc.monto AS DECIMAL) DESC
+      `),
+      db.execute(sql`
+        SELECT
+          COALESCE(SUM(CASE WHEN LOWER(mc.tipo) = 'ingreso' THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) AS ingresos,
+          COALESCE(SUM(CASE WHEN LOWER(mc.tipo) IN ('gasto', 'egreso') THEN CAST(mc.monto AS DECIMAL) ELSE 0 END), 0) AS gastos
+        FROM movimientos_contables mc
+        WHERE mc.fecha >= ${currentYearStart.toISOString()}
+          AND mc.fecha <= ${currentYearEnd.toISOString()}
+          ${traspasoFilter}
+      `),
     ]);
 
     const totalsRow = totalsRaw.rows?.[0] ?? {};
     const ingresos = toNumber(totalsRow.ingresos);
     const gastos = toNumber(totalsRow.gastos);
     const balance = ingresos - gastos;
+
+    const currentMonthRow = currentMonthTotalsRaw.rows?.[0] ?? {};
+    const currentMonthIngresos = toNumber(currentMonthRow.ingresos);
+    const currentMonthGastos = toNumber(currentMonthRow.gastos);
+    const currentMonthBalance = currentMonthIngresos - currentMonthGastos;
+    const currentMonthSavingsRate =
+      currentMonthIngresos > 0 ? toPercent((currentMonthBalance / currentMonthIngresos) * 100) : 0;
+    const currentMonthExpenseRatio =
+      currentMonthIngresos > 0
+        ? toPercent((currentMonthGastos / currentMonthIngresos) * 100)
+        : currentMonthGastos > 0
+          ? 100
+          : 0;
+
+    const currentYearRow = currentYearTotalsRaw.rows?.[0] ?? {};
+    const currentYearIngresos = toNumber(currentYearRow.ingresos);
+    const currentYearGastos = toNumber(currentYearRow.gastos);
+    const currentYearBalance = currentYearIngresos - currentYearGastos;
 
     const savingsRate = ingresos > 0 ? toPercent((balance / ingresos) * 100) : 0;
     const expenseRatio = ingresos > 0 ? toPercent((gastos / ingresos) * 100) : gastos > 0 ? 100 : 0;
@@ -221,13 +268,53 @@ export async function GET(req: Request) {
     const prevMonth = monthlyTrend.at(-2);
     const balanceTrend = lastMonth && prevMonth ? toPercent(lastMonth.balance - prevMonth.balance) : 0;
 
-    const topExpenseCategories = (topCategoriesRaw.rows ?? []).map((row: Record<string, unknown>) => ({
-      id: String(row.id ?? ""),
-      codigo: row.codigo ? String(row.codigo) : null,
-      nombre: row.nombre ? String(row.nombre) : "Sin categoria",
-      total: toNumber(row.total),
-      percentage: gastos > 0 ? toPercent((toNumber(row.total) / gastos) * 100) : 0,
-    }));
+    const currentMonthCategoryMap = new Map<
+      string,
+      {
+        id: string;
+        codigo: string | null;
+        nombre: string;
+        total: number;
+        items: Array<{ id: string; descripcion: string | null; fecha: string; monto: number }>;
+      }
+    >();
+    for (const row of currentMonthExpenseRowsRaw.rows ?? []) {
+      const nombre = row.categoria_nombre != null ? String(row.categoria_nombre) : "Sin categoria";
+      const codigo = row.categoria_codigo != null ? String(row.categoria_codigo) : null;
+      const key = nombre;
+      const entry = currentMonthCategoryMap.get(key) ?? {
+        id: String(row.categoria_id ?? ""),
+        codigo,
+        nombre,
+        total: 0,
+        items: [],
+      };
+      const monto = toNumber(row.monto);
+
+      entry.total += monto;
+      entry.items.push({
+        id: String(row.id ?? `${nombre}-${entry.items.length}`),
+        descripcion: row.descripcion != null ? String(row.descripcion) : null,
+        fecha: row.fecha != null ? new Date(String(row.fecha)).toISOString() : new Date().toISOString(),
+        monto,
+      });
+
+      currentMonthCategoryMap.set(key, entry);
+    }
+
+    const currentMonthExpenseCategories = Array.from(currentMonthCategoryMap.values())
+      .map((row) => ({
+        id: row.id,
+        codigo: row.codigo,
+        nombre: row.nombre,
+        total: row.total,
+        percentage: currentMonthGastos > 0 ? toPercent((row.total / currentMonthGastos) * 100) : 0,
+        items: row.items.sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime()),
+      }))
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 6);
+
+    const topExpenseCategories = currentMonthExpenseCategories;
 
     const receivableRow = receivablesRaw.rows?.[0] ?? {};
     const docsAbiertos = toNumber(receivableRow.docs_abiertos);
@@ -267,6 +354,7 @@ export async function GET(req: Request) {
         const last3 = values.slice(-3);
         const increasing3m = last3.length === 3 && last3[0] < last3[1] && last3[1] < last3[2];
         const decreasing3m = last3.length === 3 && last3[0] > last3[1] && last3[1] > last3[2];
+        const categoryDetails = currentMonthCategoryMap.get(name);
 
         return {
           name,
@@ -278,6 +366,14 @@ export async function GET(req: Request) {
           changePct: prev > 0 ? toPercent(((last - prev) / prev) * 100) : last > 0 ? 100 : 0,
           increasing3m,
           decreasing3m,
+          currentMonthTotal: categoryDetails?.total ?? 0,
+          currentMonthPercentage:
+            currentMonthGastos > 0 && categoryDetails
+              ? toPercent((categoryDetails.total / currentMonthGastos) * 100)
+              : 0,
+          currentMonthItems: (categoryDetails?.items ?? []).sort(
+            (a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime(),
+          ),
         };
       })
       .sort((a, b) => b.total - a.total);
@@ -370,7 +466,7 @@ export async function GET(req: Request) {
     }
 
     const topCategory = topExpenseCategories[0];
-    if (topCategory && topCategory.percentage >= 35) {
+    if (topCategory?.percentage >= 35) {
       weaknesses.push({
         title: "Dependencia de una categoria de gasto",
         detail: `La categoria ${topCategory.nombre} concentra ${topCategory.percentage}% del gasto del periodo.`,
@@ -401,7 +497,7 @@ export async function GET(req: Request) {
       });
     }
 
-    if (lastMonth && prevMonth) {
+    if (lastMonth != null && prevMonth != null) {
       if (balanceTrend >= 0) {
         strengths.push({
           title: "Tendencia mensual favorable",
@@ -550,7 +646,40 @@ export async function GET(req: Request) {
         recommendations,
         alerts,
         monthlyPatterns,
-        monthlyCategoryTrends: topCategorySeries.map((c) => ({
+        currentMonth: {
+          ingresos: currentMonthIngresos,
+          gastos: currentMonthGastos,
+          balance: currentMonthBalance,
+          savingsRate: currentMonthSavingsRate,
+          expenseRatio: currentMonthExpenseRatio,
+          healthScore: Math.max(
+            0,
+            Math.min(
+              100,
+              Math.round(
+                40 +
+                  (currentMonthSavingsRate >= targetSavingsRate ? 20 : -15) +
+                  (currentMonthExpenseRatio <= maxExpenseRatio ? 20 : -20) +
+                  (overdueRatio <= rules.goals.maxReceivablesOverdueRatio ? 10 : -10) +
+                  (currentMonthBalance >= 0 ? 10 : -10),
+              ),
+            ),
+          ),
+          estadoFinanciero:
+            currentMonthBalance >= 0 &&
+            currentMonthSavingsRate >= targetSavingsRate &&
+            currentMonthExpenseRatio <= maxExpenseRatio
+              ? "saludable"
+              : currentMonthBalance >= 0 || currentMonthSavingsRate >= targetSavingsRate / 2
+                ? "estable"
+                : "en_riesgo",
+        },
+        currentYear: {
+          ingresos: currentYearIngresos,
+          gastos: currentYearGastos,
+          balance: currentYearBalance,
+        },
+        monthlyCategoryTrends: categorySeries.map((c) => ({
           categoria: c.name,
           total: c.total,
           lastMonth: c.last,
@@ -560,6 +689,9 @@ export async function GET(req: Request) {
           increasing3m: c.increasing3m,
           decreasing3m: c.decreasing3m,
           series: c.values,
+          currentMonthTotal: c.currentMonthTotal,
+          currentMonthPercentage: c.currentMonthPercentage,
+          currentMonthItems: c.currentMonthItems,
         })),
         topExpenseCategories,
         monthlyTrend,

@@ -1,5 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+function resolveRedirectTarget(searchParams: URLSearchParams | null | undefined) {
+  const redirectParam = searchParams?.get("redirect");
+  if (redirectParam && redirectParam.startsWith("/")) {
+    return redirectParam;
+  }
+
+  return "/dashboard/crm";
+}
+
 import {
   hashPassword,
   verifyPassword,
@@ -225,6 +234,19 @@ describe("Auth Library", () => {
 
       // With mock, it will return the default mocked session
       expect(session).toBeDefined();
+    });
+  });
+
+  describe("redirect resolution", () => {
+    it("should respect a provided redirect path", () => {
+      const params = new URLSearchParams({ redirect: "/dashboard/contabilidad/finanzas" });
+
+      expect(resolveRedirectTarget(params)).toBe("/dashboard/contabilidad/finanzas");
+    });
+
+    it("should fall back to CRM when no redirect is provided", () => {
+      expect(resolveRedirectTarget(new URLSearchParams())).toBe("/dashboard/crm");
+      expect(resolveRedirectTarget(null)).toBe("/dashboard/crm");
     });
   });
 

@@ -1,11 +1,13 @@
 "use client";
 
+import { useMemo, useState } from "react";
+
+import { useRouter, useSearchParams } from "next/navigation";
+
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,7 +22,13 @@ const FormSchema = z.object({
 
 export function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
+
+  const redirectTo = useMemo(() => {
+    const redirectParam = searchParams.get("redirect");
+    return redirectParam && redirectParam.startsWith("/") ? redirectParam : "/dashboard/crm";
+  }, [searchParams]);
 
   const form = useForm<z.infer<typeof FormSchema>>({
     resolver: zodResolver(FormSchema),
@@ -47,7 +55,7 @@ export function LoginForm() {
 
       if (!response.ok || !result.success) {
         toast.error("Login Failed", {
-          description: result.error || "Invalid credentials. Please try again.",
+          description: result.error ?? "Invalid credentials. Please try again.",
         });
         return;
       }
@@ -56,9 +64,9 @@ export function LoginForm() {
         description: `Welcome back, ${result.data.user.nombre}!`,
       });
 
-      // Force full page reload to allow middleware to process the new cookie
-      window.location.href = "/dashboard/crm";
-    } catch (error) {
+      // Preserve the original destination when the user was redirected here.
+      router.replace(redirectTo);
+    } catch {
       toast.error("Error", {
         description: "An unexpected error occurred. Please try again.",
       });
