@@ -1,3 +1,4 @@
+import { FinancialDetails } from "./_components/financial-details";
 import { InsightCards } from "./_components/insight-cards";
 import { OperationalCards } from "./_components/operational-cards";
 import { OverviewCards } from "./_components/overview-cards";
@@ -10,6 +11,7 @@ export default function Page() {
       <InsightCards />
       <OperationalCards />
       <TableCards />
+      <FinancialDetails />
     </div>
   );
 }

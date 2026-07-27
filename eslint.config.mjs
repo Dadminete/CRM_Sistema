@@ -66,7 +66,7 @@ export default [
   {
     rules: {
       // Prettier integration rules
-      "prettier/prettier": ["warn", { endOfLine: "auto" }],
+      "prettier/prettier": ["error", { endOfLine: "auto" }],
 
       // File Naming
       "unicorn/filename-case": [

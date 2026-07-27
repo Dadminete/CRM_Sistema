@@ -1,152 +1,87 @@
 "use client";
 
-import { XAxis, Label, Pie, PieChart, Bar, BarChart, CartesianGrid, LabelList, YAxis } from "recharts";
+import { useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend } from "@/components/ui/chart";
-
-import {
-  leadsBySourceChartData,
-  leadsBySourceChartConfig,
-  projectRevenueChartData,
-  projectRevenueChartConfig,
-} from "./crm.config";
+import { Progress } from "@/components/ui/progress";
+import type { AccountingDashboardData } from "@/lib/contabilidad/dashboard-data";
+import { formatCurrency } from "@/lib/utils";
 
 export function InsightCards() {
-  const totalLeads = leadsBySourceChartData.reduce((acc, curr) => acc + curr.leads, 0);
+  const [data, setData] = useState<AccountingDashboardData | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const response = await fetch("/api/contabilidad/dashboard", { cache: "no-store" });
+      const json = await response.json();
+
+      if (json.success) {
+        setData(json.data);
+      }
+    };
+
+    void load();
+  }, []);
+
+  if (!data) {
+    return null;
+  }
+
+  const topCategories = data.categories.slice(0, 6);
+  const totalCategories = data.categories.reduce((sum, item) => sum + item.total, 0);
 
   return (
     <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-5">
       <Card className="col-span-1 xl:col-span-2">
         <CardHeader>
-          <CardTitle>Leads by Source</CardTitle>
+          <CardTitle>Distribución por categoría</CardTitle>
         </CardHeader>
-        <CardContent className="max-h-48">
-          <ChartContainer config={leadsBySourceChartConfig} className="size-full">
-            <PieChart
-              className="m-0"
-              margin={{
-                top: 0,
-                right: 0,
-                left: 0,
-                bottom: 0,
-              }}
-            >
-              <ChartTooltip cursor={false} content={<ChartTooltipContent hideLabel />} />
-              <Pie
-                data={leadsBySourceChartData}
-                dataKey="leads"
-                nameKey="source"
-                innerRadius={65}
-                outerRadius={90}
-                paddingAngle={2}
-                cornerRadius={4}
-              >
-                <Label
-                  content={({ viewBox }) => {
-                    if (viewBox && "cx" in viewBox && "cy" in viewBox) {
-                      return (
-                        <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle">
-                          <tspan
-                            x={viewBox.cx}
-                            y={viewBox.cy}
-                            className="fill-foreground text-3xl font-bold tabular-nums"
-                          >
-                            {totalLeads.toLocaleString()}
-                          </tspan>
-                          <tspan x={viewBox.cx} y={(viewBox.cy ?? 0) + 24} className="fill-muted-foreground">
-                            Leads
-                          </tspan>
-                        </text>
-                      );
-                    }
-                  }}
-                />
-              </Pie>
-              <ChartLegend
-                layout="vertical"
-                verticalAlign="middle"
-                align="right"
-                content={() => (
-                  <ul className="ml-8 flex flex-col gap-3">
-                    {leadsBySourceChartData.map((item) => (
-                      <li key={item.source} className="flex w-36 items-center justify-between">
-                        <span className="flex items-center gap-2 capitalize">
-                          <span className="size-2.5 rounded-full" style={{ background: item.fill }} />
-                          {leadsBySourceChartConfig[item.source].label}
-                        </span>
-                        <span className="tabular-nums">{item.leads}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              />
-            </PieChart>
-          </ChartContainer>
+        <CardContent className="space-y-3">
+          {topCategories.map((category) => {
+            const percentage = totalCategories > 0 ? (category.total / totalCategories) * 100 : 0;
+            return (
+              <div key={`${category.nombre}-${category.tipo}`} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">{category.nombre}</span>
+                  <span className="tabular-nums">{formatCurrency(category.total)}</span>
+                </div>
+                <Progress value={Math.min(100, percentage)} />
+                <p className="text-muted-foreground text-xs">
+                  {category.count} movimientos · {percentage.toFixed(1)}%
+                </p>
+              </div>
+            );
+          })}
         </CardContent>
-        <CardFooter className="gap-2">
-          <Button size="sm" variant="outline" className="basis-1/2">
-            View Full Report
-          </Button>
-          <Button size="sm" variant="outline" className="basis-1/2">
-            Download CSV
-          </Button>
+        <CardFooter>
+          <p className="text-muted-foreground text-xs">Los montos se toman desde los movimientos del periodo actual.</p>
         </CardFooter>
       </Card>
 
       <Card className="col-span-1 xl:col-span-3">
         <CardHeader>
-          <CardTitle>Project Revenue vs. Target</CardTitle>
+          <CardTitle>Resumen financiero detallado</CardTitle>
         </CardHeader>
-        <CardContent className="size-full max-h-52">
-          <ChartContainer config={projectRevenueChartConfig} className="size-full">
-            <BarChart accessibilityLayer data={projectRevenueChartData} layout="vertical">
-              <CartesianGrid horizontal={false} />
-              <YAxis
-                dataKey="name"
-                type="category"
-                tickLine={false}
-                tickMargin={10}
-                axisLine={false}
-                tickFormatter={(value) => value.slice(0, 3)}
-                hide
-              />
-              <XAxis dataKey="actual" type="number" hide />
-              <ChartTooltip cursor={false} content={<ChartTooltipContent indicator="line" />} />
-              <Bar stackId="a" dataKey="actual" layout="vertical" fill="var(--color-actual)">
-                <LabelList
-                  dataKey="name"
-                  position="insideLeft"
-                  offset={8}
-                  className="fill-primary-foreground text-xs"
-                />
-                <LabelList
-                  dataKey="actual"
-                  position="insideRight"
-                  offset={8}
-                  className="fill-primary-foreground text-xs tabular-nums"
-                />
-              </Bar>
-              <Bar
-                stackId="a"
-                dataKey="remaining"
-                layout="vertical"
-                fill="var(--color-remaining)"
-                radius={[0, 6, 6, 0]}
-              >
-                <LabelList
-                  dataKey="remaining"
-                  position="insideRight"
-                  offset={8}
-                  className="fill-primary-foreground text-xs tabular-nums"
-                />
-              </Bar>
-            </BarChart>
-          </ChartContainer>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm">Ingresos</p>
+            <p className="text-xl font-semibold tabular-nums">{formatCurrency(data.periodSummary.ingresosMes)}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm">Gastos</p>
+            <p className="text-xl font-semibold tabular-nums">{formatCurrency(data.periodSummary.gastosMes)}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm">Balance</p>
+            <p className="text-xl font-semibold tabular-nums">{formatCurrency(data.periodSummary.balanceMes)}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-muted-foreground text-sm">Movimientos</p>
+            <p className="text-xl font-semibold tabular-nums">{data.periodSummary.movimientos}</p>
+          </div>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground text-xs">Average progress: 78% · 2 projects above target</p>
+          <p className="text-muted-foreground text-xs">Incluye movimientos asociados a cajas y cuentas bancarias.</p>
         </CardFooter>
       </Card>
     </div>

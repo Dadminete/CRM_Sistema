@@ -1,69 +1,86 @@
 "use client";
 
-import { Clock } from "lucide-react";
-import { FunnelChart, Funnel, LabelList } from "recharts";
+import { useEffect, useState } from "react";
 
-import { Card, CardHeader, CardTitle, CardContent, CardFooter, CardDescription } from "@/components/ui/card";
-import { ChartContainer } from "@/components/ui/chart";
-import { Checkbox } from "@/components/ui/checkbox";
+import { Banknote, BriefcaseBusiness } from "lucide-react";
+
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { formatCurrency, cn } from "@/lib/utils";
-
-import { salesPipelineChartData, salesPipelineChartConfig, regionSalesData, actionItems } from "./crm.config";
+import type { AccountingDashboardData } from "@/lib/contabilidad/dashboard-data";
+import { formatCurrency } from "@/lib/utils";
 
 export function OperationalCards() {
-  const totalSales = regionSalesData.reduce((sum, region) => sum + region.sales, 0);
+  const [data, setData] = useState<AccountingDashboardData | null>(null);
+
+  useEffect(() => {
+    const load = async () => {
+      const response = await fetch("/api/contabilidad/dashboard", { cache: "no-store" });
+      const json = await response.json();
+
+      if (json.success) {
+        setData(json.data);
+      }
+    };
+
+    void load();
+  }, []);
+
+  if (!data) {
+    return null;
+  }
+
+  const totalCajas = data.cajas.reduce((sum, caja) => sum + caja.saldoActual, 0);
+  const totalBancos = data.cuentasBancarias.reduce((sum, cuenta) => sum + cuenta.saldoActual, 0);
+  const totalMovimientos = data.periodSummary.movimientos;
+
   return (
     <div className="grid grid-cols-1 gap-4 *:data-[slot=card]:shadow-xs sm:grid-cols-2 xl:grid-cols-3">
       <Card>
         <CardHeader>
-          <CardTitle>Sales Pipeline</CardTitle>
+          <CardTitle>Detalle de cajas</CardTitle>
+          <CardDescription>Saldo total operativo</CardDescription>
         </CardHeader>
-        <CardContent className="size-full">
-          <ChartContainer config={salesPipelineChartConfig} className="size-full">
-            <FunnelChart margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
-              <Funnel className="stroke-card stroke-2" dataKey="value" data={salesPipelineChartData}>
-                <LabelList className="fill-foreground stroke-0" dataKey="stage" position="right" offset={10} />
-                <LabelList className="fill-foreground stroke-0" dataKey="value" position="left" offset={10} />
-              </Funnel>
-            </FunnelChart>
-          </ChartContainer>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium">Saldo combinado</span>
+            <span className="text-sm font-semibold tabular-nums">{formatCurrency(totalCajas)}</span>
+          </div>
+          <div className="space-y-2">
+            {data.cajas.slice(0, 4).map((caja) => (
+              <div key={caja.id} className="space-y-1">
+                <div className="flex items-center justify-between text-sm">
+                  <span>{caja.nombre}</span>
+                  <span className="font-semibold tabular-nums">{formatCurrency(caja.saldoActual)}</span>
+                </div>
+                <Progress value={Math.min(100, (caja.saldoActual / Math.max(totalCajas, 1)) * 100)} />
+              </div>
+            ))}
+          </div>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground text-xs">Leads increased by 18.2% since last month.</p>
+          <p className="text-muted-foreground text-xs">
+            Se consideran los saldos actuales más los movimientos del mes.
+          </p>
         </CardFooter>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Sales by Region</CardTitle>
-          <CardDescription className="font-medium tabular-nums">
-            {formatCurrency(totalSales, { noDecimals: true })}
-          </CardDescription>
+          <CardTitle>Cuentas bancarias</CardTitle>
+          <CardDescription className="font-medium tabular-nums">{formatCurrency(totalBancos)}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2.5">
-            {regionSalesData.map((region) => (
-              <div key={region.region} className="space-y-0.5">
+            {data.cuentasBancarias.slice(0, 4).map((cuenta) => (
+              <div key={cuenta.id} className="space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium">{region.region}</span>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-sm font-semibold tabular-nums">
-                      {formatCurrency(region.sales, { noDecimals: true })}
-                    </span>
-                    <span
-                      className={cn(
-                        "text-xs font-medium tabular-nums",
-                        region.isPositive ? "text-green-500" : "text-destructive",
-                      )}
-                    >
-                      {region.growth}
-                    </span>
-                  </div>
+                  <span className="text-sm font-medium">
+                    {cuenta.banco} - {cuenta.numeroCuenta}
+                  </span>
+                  <span className="text-sm font-semibold tabular-nums">{formatCurrency(cuenta.saldoActual)}</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Progress value={region.percentage} />
-                  <span className="text-muted-foreground text-xs font-medium tabular-nums">{region.percentage}%</span>
+                <div className="text-muted-foreground text-xs">
+                  Ingresos: {formatCurrency(cuenta.ingresosMes)} · Gastos: {formatCurrency(cuenta.gastosMes)}
                 </div>
               </div>
             ))}
@@ -71,42 +88,35 @@ export function OperationalCards() {
         </CardContent>
         <CardFooter>
           <div className="text-muted-foreground flex justify-between gap-1 text-xs">
-            <span>{regionSalesData.length} regions tracked</span>
+            <span>{data.cuentasBancarias.length} cuentas</span>
             <span>•</span>
-            <span>{regionSalesData.filter((r) => r.isPositive).length} regions growing</span>
+            <span>{totalMovimientos} movimientos</span>
           </div>
         </CardFooter>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Action Items</CardTitle>
+          <CardTitle>Resumen operativo</CardTitle>
         </CardHeader>
         <CardContent>
           <ul className="space-y-2.5">
-            {actionItems.map((item) => (
-              <li key={item.id} className="space-y-2 rounded-md border px-3 py-2">
-                <div className="flex items-center gap-2">
-                  <Checkbox defaultChecked={item.checked} />
-                  <span className="text-sm font-medium">{item.title}</span>
-                  <span
-                    className={cn(
-                      "w-fit rounded-md px-2 py-1 text-xs font-medium",
-                      item.priority === "High" && "text-destructive bg-destructive/20",
-                      item.priority === "Medium" && "bg-yellow-500/20 text-yellow-500",
-                      item.priority === "Low" && "bg-green-500/20 text-green-500",
-                    )}
-                  >
-                    {item.priority}
-                  </span>
-                </div>
-                <div className="text-muted-foreground text-xs font-medium">{item.desc}</div>
-                <div className="flex items-center gap-1">
-                  <Clock className="text-muted-foreground size-3" />
-                  <span className="text-muted-foreground text-xs font-medium">{item.due}</span>
-                </div>
-              </li>
-            ))}
+            <li className="flex items-center justify-between rounded-md border px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Banknote className="size-4 text-emerald-600" />
+                <span className="text-sm font-medium">Ingresos del periodo</span>
+              </div>
+              <span className="text-sm font-semibold tabular-nums">
+                {formatCurrency(data.periodSummary.ingresosMes)}
+              </span>
+            </li>
+            <li className="flex items-center justify-between rounded-md border px-3 py-2">
+              <div className="flex items-center gap-2">
+                <BriefcaseBusiness className="size-4 text-rose-600" />
+                <span className="text-sm font-medium">Gastos del periodo</span>
+              </div>
+              <span className="text-sm font-semibold tabular-nums">{formatCurrency(data.periodSummary.gastosMes)}</span>
+            </li>
           </ul>
         </CardContent>
       </Card>
