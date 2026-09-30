@@ -41,5 +41,5 @@ export const GET = withAuth(
       return CommonErrors.internalError("Error al obtener estadísticas: " + error.message);
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.dashboard" },
 );

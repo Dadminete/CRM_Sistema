@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { eq, and, gte, lte, sql, desc, or } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 import {
   cajas,
   movimientosContables,
@@ -16,7 +17,7 @@ import {
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getCrmOverview() {
   try {
     const now = new Date();
     const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -273,3 +274,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withAuth(async () => getCrmOverview(), { requiredPermission: "dashboard.principal" });

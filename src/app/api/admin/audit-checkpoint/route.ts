@@ -1,18 +1,18 @@
-import { db } from "@/lib/db";
-import { cajas, movimientosContables } from "@/lib/db/schema";
-import { eq, sql, gt } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-export async function GET(req: Request) {
+import { eq, sql } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+import { cajas, movimientosContables } from "@/lib/db/schema";
+
+async function handleGet(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cajaId = searchParams.get("cajaId");
 
     if (!cajaId) {
-      return NextResponse.json(
-        { success: false, error: "cajaId es requerido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "cajaId es requerido" }, { status: 400 });
     }
 
     // Get caja
@@ -26,14 +26,17 @@ export async function GET(req: Request) {
 
     // Get latest checkpoint
     const latestCheckpoint = await db.execute(
-      sql`SELECT * FROM caja_checkpoints WHERE caja_id = ${cajaId} ORDER BY fecha_checkpoint DESC LIMIT 1`
+      sql`SELECT * FROM caja_checkpoints WHERE caja_id = ${cajaId} ORDER BY fecha_checkpoint DESC LIMIT 1`,
     );
 
     if ((latestCheckpoint.rows || []).length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: "No hay checkpoint establecido para esta caja. Ejecuta /api/admin/set-checkpoint primero.",
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: "No hay checkpoint establecido para esta caja. Ejecuta /api/admin/set-checkpoint primero.",
+        },
+        { status: 400 },
+      );
     }
 
     const checkpoint = (latestCheckpoint.rows as any[])[0];
@@ -43,7 +46,7 @@ export async function GET(req: Request) {
       .select()
       .from(movimientosContables)
       .where(
-        sql`${movimientosContables.cajaId} = ${cajaId} AND ${movimientosContables.fecha} > ${checkpoint.fecha_checkpoint}`
+        sql`${movimientosContables.cajaId} = ${cajaId} AND ${movimientosContables.fecha} > ${checkpoint.fecha_checkpoint}`,
       );
 
     // Calculate changes since checkpoint
@@ -60,10 +63,7 @@ export async function GET(req: Request) {
     });
 
     // Calculate expected balance
-    const expectedBalance = 
-      parseFloat(checkpoint.saldo_establecido) + 
-      ingresosPostCheckpoint - 
-      gastosPostCheckpoint;
+    const expectedBalance = parseFloat(checkpoint.saldo_establecido) + ingresosPostCheckpoint - gastosPostCheckpoint;
 
     const currentBalance = parseFloat(caja.saldoActual.toString());
     const discrepancia = currentBalance - expectedBalance;
@@ -105,9 +105,8 @@ export async function GET(req: Request) {
     });
   } catch (error: any) {
     console.error("Error auditing checkpoint:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet, { requiredPermission: "contabilidad.balance_general" });

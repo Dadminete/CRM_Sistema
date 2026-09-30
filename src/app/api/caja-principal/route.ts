@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { cajas, movimientosContables, sesionesCaja, categoriasCuentas } from "@/lib/db/schema";
 import { eq, and, gte, lte, sql, desc } from "drizzle-orm";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getMainCashbox() {
   try {
     // 1. Get TRASP-001 category id
     const traspasoCat = await db
@@ -17,11 +18,7 @@ export async function GET() {
     const traspasoCatId = traspasoCat[0]?.id ?? null;
 
     // 2. Get Caja Principal
-    const cajaPrincipal = await db
-      .select()
-      .from(cajas)
-      .where(eq(cajas.nombre, "Caja Principal"))
-      .limit(1);
+    const cajaPrincipal = await db.select().from(cajas).where(eq(cajas.nombre, "Caja Principal")).limit(1);
 
     if (!cajaPrincipal || cajaPrincipal.length === 0) {
       return NextResponse.json({ success: false, error: "Caja Principal no encontrada" }, { status: 404 });
@@ -85,7 +82,7 @@ export async function GET() {
 
     // Fill in any missing days with zeros so we always have 15 data points
     const historyMap = new Map<string, { ingresos: number; gastos: number }>();
-    for (const row of (historyRaw.rows ?? [])) {
+    for (const row of historyRaw.rows ?? []) {
       const r = row as any;
       historyMap.set(r.fecha as string, {
         ingresos: Number(r.ingresos),
@@ -120,3 +117,4 @@ export async function GET() {
   }
 }
 
+export const GET = withAuth(async () => getMainCashbox(), { requiredPermission: "cajas.dashboard" });

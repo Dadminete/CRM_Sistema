@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
 import { sql } from "drizzle-orm";
 
@@ -34,7 +35,7 @@ function normalizeFechas(value: unknown): string[] {
   return [];
 }
 
-export async function GET() {
+async function getTopCompliantClientDetails() {
   try {
     const result = await db.execute<Row>(sql`
       WITH on_time AS (
@@ -84,3 +85,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getTopCompliantClientDetails(), { requiredPermission: "clientes.listado" });

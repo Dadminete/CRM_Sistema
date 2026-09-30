@@ -3,13 +3,14 @@ import { NextResponse } from "next/server";
 import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 import { banks, cuentasBancarias, cuentasContables, movimientosContables } from "@/lib/db/schema";
 
 // Forzar que el endpoint sea dinámico y no se cachee
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export async function GET() {
+async function getBankStats() {
   try {
     // 1. Obtener el saldo total de todas las cuentas bancarias activas en una sola consulta
     // Saldo = SaldoInicial (libro mayor) + Sum(Ingresos) - Sum(Gastos)
@@ -49,17 +50,17 @@ export async function GET() {
     const ultimosMeses = [];
     let currentBalanceAccumulator = saldoTotal;
 
-    // Convertimos a array para procesar hacia atrás el balance si es necesario, 
+    // Convertimos a array para procesar hacia atrás el balance si es necesario,
     // pero aquí los tenemos en orden ascendente para el acumulador invertido
     const rows = monthlyStatsRaw.rows as any[];
-    
+
     // Mapeamos los meses que tenemos datos
     const historyMap = new Map();
-    rows.forEach(row => {
+    rows.forEach((row) => {
       const date = new Date(row.mes_fecha);
       historyMap.set(date.getMonth() + "-" + date.getFullYear(), {
         ingresos: Number(row.ingresos),
-        gastos: Number(row.gastos)
+        gastos: Number(row.gastos),
       });
     });
 
@@ -67,15 +68,15 @@ export async function GET() {
     const now = new Date();
     const monthsToProcess = [];
     for (let i = 0; i < 6; i++) {
-        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        monthsToProcess.push(d);
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      monthsToProcess.push(d);
     }
 
     // Procesamos para calcular los balances históricos
     for (const d of monthsToProcess) {
       const key = d.getMonth() + "-" + d.getFullYear();
       const stat = historyMap.get(key) || { ingresos: 0, gastos: 0 };
-      
+
       ultimosMeses.unshift({
         mes: monthNames[d.getMonth()],
         ingresos: stat.ingresos,
@@ -84,9 +85,8 @@ export async function GET() {
       });
 
       // El balance del mes anterior es BalanceActual - (IngresosMesActual - GastosMesActual)
-      currentBalanceAccumulator -= (stat.ingresos - stat.gastos);
+      currentBalanceAccumulator -= stat.ingresos - stat.gastos;
     }
-
 
     return NextResponse.json({
       success: true,
@@ -101,3 +101,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getBankStats(), { requiredPermission: "cajas.cuentas_bancarias" });

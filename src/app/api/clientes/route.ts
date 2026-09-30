@@ -201,7 +201,7 @@ export const GET = withAuth(
           ilike(clientes.apellidos, `%${search}%`),
           ilike(clientes.codigoCliente, `%${search}%`),
           ilike(clientes.cedula, `%${search}%`),
-          ilike(clientes.email, `%${search}%`)
+          ilike(clientes.email, `%${search}%`),
         );
       }
 
@@ -211,59 +211,59 @@ export const GET = withAuth(
       // Fetch paginated clients
       // Fetch paginated clients
       const orderColumn =
-        sortBy === "nombre" ? clientes.nombre : sortBy === "codigoCliente" ? clientes.codigoCliente : clientes.createdAt;
-      
-        const allClients = await db
-          .select({
-            id: clientes.id,
-            // ... (all columns)
-            usuarioId: clientes.usuarioId,
-            codigoCliente: clientes.codigoCliente,
-            cedula: clientes.cedula,
-            nombre: clientes.nombre,
-            apellidos: clientes.apellidos,
-            telefono: clientes.telefono,
-            telefonoSecundario: clientes.telefonoSecundario,
-            email: clientes.email,
-            direccion: clientes.direccion,
-            sectorBarrio: clientes.sectorBarrio,
-            ciudad: clientes.ciudad,
-            provincia: clientes.provincia,
-            codigoPostal: clientes.codigoPostal,
-            coordenadasLat: clientes.coordenadasLat,
-            coordenadasLng: clientes.coordenadasLng,
-            fechaSuscripcion: clientes.fechaSuscripcion,
-            sexo: clientes.sexo,
-            fotoUrl: clientes.fotoUrl,
-            contacto: clientes.contacto,
-            contactoEmergencia: clientes.contactoEmergencia,
-            telefonoEmergencia: clientes.telefonoEmergencia,
-            referenciaDireccion: clientes.referenciaDireccion,
-            tipoCliente: clientes.tipoCliente,
-            categoriaCliente: clientes.categoriaCliente,
-            estado: clientes.estado,
-            limiteCrediticio: clientes.limiteCrediticio,
-            creditoDisponible: clientes.creditoDisponible,
-            diasCredito: clientes.diasCredito,
-            descuentoPorcentaje: clientes.descuentoPorcentaje,
-            notas: clientes.notas,
-            referidoPor: clientes.referidoPor,
-            fechaIngreso: clientes.fechaIngreso,
-            createdAt: clientes.createdAt,
-            updatedAt: clientes.updatedAt,
-            tieneSuscripcionActiva: exists(
-              db.select({ id: suscripciones.id })
-                .from(suscripciones)
-                .where(
-                  and(
-                    eq(suscripciones.clienteId, clientes.id),
-                    eq(suscripciones.estado, 'activo')
-                  )
-                )
-            ).as("tieneSuscripcionActiva"),
-          })
-          .from(clientes)
-          .where(whereClause)
+        sortBy === "nombre"
+          ? clientes.nombre
+          : sortBy === "codigoCliente"
+            ? clientes.codigoCliente
+            : clientes.createdAt;
+
+      const allClients = await db
+        .select({
+          id: clientes.id,
+          // ... (all columns)
+          usuarioId: clientes.usuarioId,
+          codigoCliente: clientes.codigoCliente,
+          cedula: clientes.cedula,
+          nombre: clientes.nombre,
+          apellidos: clientes.apellidos,
+          telefono: clientes.telefono,
+          telefonoSecundario: clientes.telefonoSecundario,
+          email: clientes.email,
+          direccion: clientes.direccion,
+          sectorBarrio: clientes.sectorBarrio,
+          ciudad: clientes.ciudad,
+          provincia: clientes.provincia,
+          codigoPostal: clientes.codigoPostal,
+          coordenadasLat: clientes.coordenadasLat,
+          coordenadasLng: clientes.coordenadasLng,
+          fechaSuscripcion: clientes.fechaSuscripcion,
+          sexo: clientes.sexo,
+          fotoUrl: clientes.fotoUrl,
+          contacto: clientes.contacto,
+          contactoEmergencia: clientes.contactoEmergencia,
+          telefonoEmergencia: clientes.telefonoEmergencia,
+          referenciaDireccion: clientes.referenciaDireccion,
+          tipoCliente: clientes.tipoCliente,
+          categoriaCliente: clientes.categoriaCliente,
+          estado: clientes.estado,
+          limiteCrediticio: clientes.limiteCrediticio,
+          creditoDisponible: clientes.creditoDisponible,
+          diasCredito: clientes.diasCredito,
+          descuentoPorcentaje: clientes.descuentoPorcentaje,
+          notas: clientes.notas,
+          referidoPor: clientes.referidoPor,
+          fechaIngreso: clientes.fechaIngreso,
+          createdAt: clientes.createdAt,
+          updatedAt: clientes.updatedAt,
+          tieneSuscripcionActiva: exists(
+            db
+              .select({ id: suscripciones.id })
+              .from(suscripciones)
+              .where(and(eq(suscripciones.clienteId, clientes.id), eq(suscripciones.estado, "activo"))),
+          ).as("tieneSuscripcionActiva"),
+        })
+        .from(clientes)
+        .where(whereClause)
         .orderBy(sortOrder === "asc" ? sql`${orderColumn} ASC` : sql`${orderColumn} DESC`)
         .limit(limit)
         .offset(offset);
@@ -289,8 +289,15 @@ export const GET = withAuth(
         WHERE estado = 'activo'
         GROUP BY cliente_id
       `);
-      const suscripcionInfoPorCliente = new Map<string, { fechaProximoPago: string | null; diaFacturacion: number | null }>();
-      for (const row of fechasResult.rows as { cliente_id: string; fecha_proximo_pago: string | null; dia_facturacion: number | null }[]) {
+      const suscripcionInfoPorCliente = new Map<
+        string,
+        { fechaProximoPago: string | null; diaFacturacion: number | null }
+      >();
+      for (const row of fechasResult.rows as {
+        cliente_id: string;
+        fecha_proximo_pago: string | null;
+        dia_facturacion: number | null;
+      }[]) {
         suscripcionInfoPorCliente.set(row.cliente_id, {
           fechaProximoPago: row.fecha_proximo_pago,
           diaFacturacion: row.dia_facturacion,
@@ -314,7 +321,7 @@ export const GET = withAuth(
       return CommonErrors.internalError("Error al obtener clientes");
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.listado" },
 );
 
 export const POST = withAuth(
@@ -373,5 +380,5 @@ export const POST = withAuth(
       return CommonErrors.internalError("Error al crear cliente");
     }
   },
-  { requiredPermission: "clientes:crear" },
+  { requiredPermission: "clientes.crear" },
 );

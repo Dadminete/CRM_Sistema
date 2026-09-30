@@ -1,17 +1,17 @@
-import { db } from "@/lib/db";
-import { cajas, movimientosContables } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+import { eq } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+import { cajas, movimientosContables } from "@/lib/db/schema";
+
+async function handlePost(_req: Request) {
   try {
     const cajaId = "c5ab2edc-d32c-494d-b454-d1731c6c31df"; // Caja Principal
 
     // Get all movements for this caja
-    const movements = await db
-      .select()
-      .from(movimientosContables)
-      .where(eq(movimientosContables.cajaId, cajaId));
+    const movements = await db.select().from(movimientosContables).where(eq(movimientosContables.cajaId, cajaId));
 
     // Find duplicates: same tipo, monto, descripcion, keep only first occurrence (by fecha)
     const seen = new Map<string, { id: string; fecha: Date }>();
@@ -41,9 +41,7 @@ export async function POST(req: Request) {
     let deletedCount = 0;
     for (const id of toDelete) {
       try {
-        await db
-          .delete(movimientosContables)
-          .where(eq(movimientosContables.id, id));
+        await db.delete(movimientosContables).where(eq(movimientosContables.id, id));
         deletedCount++;
       } catch (e) {
         console.error("Failed to delete", id, e);
@@ -51,10 +49,7 @@ export async function POST(req: Request) {
     }
 
     // Recalculate caja balance
-    const remaining = await db
-      .select()
-      .from(movimientosContables)
-      .where(eq(movimientosContables.cajaId, cajaId));
+    const remaining = await db.select().from(movimientosContables).where(eq(movimientosContables.cajaId, cajaId));
 
     let newBalance = 0;
     remaining.forEach((m) => {
@@ -80,9 +75,8 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost, { requiredPermission: "contabilidad.ingresos_gastos" });

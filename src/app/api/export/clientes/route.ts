@@ -70,5 +70,5 @@ export const GET = withAuth(
       return NextResponse.json({ success: false, error: "Error al exportar clientes" }, { status: 500 });
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.listado" },
 );

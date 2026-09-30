@@ -5,6 +5,7 @@ import { and, eq, sql, ilike } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { cuentasPorCobrar, facturasClientes, pagosClientes, cajas, movimientosContables } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 const patchFacturaSchema = z.object({
   accion: z.enum(["cancelar", "anular", "reactivar"]).optional(),
@@ -23,7 +24,7 @@ const patchFacturaSchema = z.object({
 
 const round2 = (value: number) => Math.round(value * 100) / 100;
 
-export async function PATCH(req: Request, context: { params: Promise<{ id: string }> }) {
+async function patchInvoice(req: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
     const payload = await req.json();
@@ -72,9 +73,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
     let computedPagadoSum = 0;
     if (isReactivar) {
-      const resultPagos = await db.select({ total: sql<string>`SUM(${pagosClientes.monto})`.as('total') })
+      const resultPagos = await db
+        .select({ total: sql<string>`SUM(${pagosClientes.monto})`.as("total") })
         .from(pagosClientes)
-        .where(and(eq(pagosClientes.facturaId, id), eq(pagosClientes.estado, 'confirmado')));
+        .where(and(eq(pagosClientes.facturaId, id), eq(pagosClientes.estado, "confirmado")));
       computedPagadoSum = Number(resultPagos[0]?.total || 0);
     }
 
@@ -89,7 +91,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
     const nextTotal = body.total ?? currentTotal;
 
     if (nextDescuento > nextSubtotal) {
-      return NextResponse.json({ success: false, error: "El descuento no puede superar el subtotal." }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "El descuento no puede superar el subtotal." },
+        { status: 400 },
+      );
     }
 
     await db.transaction(async (tx) => {
@@ -146,9 +151,10 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
           } else {
             estadoCxc = "pendiente";
           }
-          
+
           if (!nextEstado) {
-            const derivedEstadoFactura = nuevoPendiente === 0 ? "pagada" : computedPagadoSum > 0 ? "parcial" : "pendiente";
+            const derivedEstadoFactura =
+              nuevoPendiente === 0 ? "pagada" : computedPagadoSum > 0 ? "parcial" : "pendiente";
             await tx
               .update(facturasClientes)
               .set({ estado: derivedEstadoFactura, updatedAt: now })
@@ -183,27 +189,32 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
 
           // REVERT PAYMENTS
           const pagosRealizados = await tx
-              .select({
-                id: pagosClientes.id,
-                numeroPago: pagosClientes.numeroPago,
-                monto: pagosClientes.monto,
-                cajaId: pagosClientes.cajaId,
-                metodoPago: pagosClientes.metodoPago
-              })
-              .from(pagosClientes)
-              .where(eq(pagosClientes.facturaId, id));
+            .select({
+              id: pagosClientes.id,
+              numeroPago: pagosClientes.numeroPago,
+              monto: pagosClientes.monto,
+              cajaId: pagosClientes.cajaId,
+              metodoPago: pagosClientes.metodoPago,
+            })
+            .from(pagosClientes)
+            .where(eq(pagosClientes.facturaId, id));
 
           for (const pago of pagosRealizados) {
-             const montoPago = Number(pago.monto || 0);
-             if (pago.metodoPago === "efectivo" && pago.cajaId && montoPago > 0) {
-                await tx.update(cajas).set({ saldoActual: sql`${cajas.saldoActual} - ${montoPago}` }).where(eq(cajas.id, pago.cajaId));
-             }
-             await tx.delete(movimientosContables).where(
+            const montoPago = Number(pago.monto || 0);
+            if (pago.metodoPago === "efectivo" && pago.cajaId && montoPago > 0) {
+              await tx
+                .update(cajas)
+                .set({ saldoActual: sql`${cajas.saldoActual} - ${montoPago}` })
+                .where(eq(cajas.id, pago.cajaId));
+            }
+            await tx
+              .delete(movimientosContables)
+              .where(
                 and(
-                   eq(movimientosContables.tipo, "ingreso"),
-                   ilike(movimientosContables.descripcion, `Pago de factura ${pago.numeroPago}%`)
-                )
-             );
+                  eq(movimientosContables.tipo, "ingreso"),
+                  ilike(movimientosContables.descripcion, `Pago de factura ${pago.numeroPago}%`),
+                ),
+              );
           }
           await tx.delete(pagosClientes).where(eq(pagosClientes.facturaId, id));
         }
@@ -247,7 +258,7 @@ export async function PATCH(req: Request, context: { params: Promise<{ id: strin
   }
 }
 
-export async function GET(_req: Request, context: { params: Promise<{ id: string }> }) {
+async function getInvoice(_req: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params;
 
@@ -278,3 +289,6 @@ export async function GET(_req: Request, context: { params: Promise<{ id: string
     return NextResponse.json({ success: false, error: error.message ?? "Internal error" }, { status: 500 });
   }
 }
+
+export const PATCH = withAuth(patchInvoice, { requiredPermission: "facturas.editar" });
+export const GET = withAuth(getInvoice, { requiredPermission: "facturas.listado" });

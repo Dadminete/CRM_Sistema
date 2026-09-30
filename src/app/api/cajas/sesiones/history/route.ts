@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { sesionesCaja, cajas, usuarios, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
-import { eq, and, sql, desc, gte, lte, or, nvl, ne } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte, or, nvl, ne, inArray, isNull } from "drizzle-orm";
 
-export async function GET(req: Request) {
+async function getSessionHistory(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cajaId = searchParams.get("cajaId");
@@ -16,8 +17,10 @@ export async function GET(req: Request) {
       .limit(1);
     const traspasoCatId = traspasoCat[0]?.id ?? null;
 
-    const limit = parseInt(searchParams.get("limit") || "20");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const requestedLimit = Number.parseInt(searchParams.get("limit") ?? "20", 10);
+    const requestedOffset = Number.parseInt(searchParams.get("offset") ?? "0", 10);
+    const limit = Number.isFinite(requestedLimit) ? Math.min(Math.max(requestedLimit, 1), 100) : 20;
+    const offset = Number.isFinite(requestedOffset) ? Math.max(requestedOffset, 0) : 0;
 
     let baseQuery = db
       .select({
@@ -54,43 +57,36 @@ export async function GET(req: Request) {
 
     const sessions = await baseQuery.orderBy(desc(sesionesCaja.fechaApertura)).limit(limit).offset(offset);
 
-    // Para cada sesión, calculamos ingresos y gastos
-    const detailedSessions = await Promise.all(
-      sessions.map(async (s) => {
-        const isOpen = s.estado === "abierta";
-        const rangeStart = s.fechaApertura;
-        const rangeEnd = s.fechaCierre;
+    const sessionIds = sessions.map((session) => session.id);
+    const totals = sessionIds.length
+      ? await db
+          .select({
+            sessionId: sesionesCaja.id,
+            ingresos: sql<string>`COALESCE(SUM(CASE WHEN ${movimientosContables.tipo} IN ('ingreso', 'traspaso') THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+            gastos: sql<string>`COALESCE(SUM(CASE WHEN ${movimientosContables.tipo} IN ('gasto', 'egreso') THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+          })
+          .from(sesionesCaja)
+          .leftJoin(
+            movimientosContables,
+            and(
+              eq(movimientosContables.cajaId, sesionesCaja.cajaId),
+              gte(movimientosContables.fecha, sesionesCaja.fechaApertura),
+              or(isNull(sesionesCaja.fechaCierre), lte(movimientosContables.fecha, sesionesCaja.fechaCierre)),
+            ),
+          )
+          .where(inArray(sesionesCaja.id, sessionIds))
+          .groupBy(sesionesCaja.id)
+      : [];
+    const totalsBySession = new Map(totals.map((total) => [total.sessionId, total]));
+    const detailedSessions = sessions.map((session) => {
+      const total = totalsBySession.get(session.id);
+      return {
+        ...session,
+        totalIngresos: Number.parseFloat(total?.ingresos ?? "0"),
+        totalGastos: Number.parseFloat(total?.gastos ?? "0"),
+      };
+    });
 
-        const baseFilters = [eq(movimientosContables.cajaId, s.cajaId), gte(movimientosContables.fecha, rangeStart)];
-
-        if (!isOpen && rangeEnd) {
-          baseFilters.push(lte(movimientosContables.fecha, rangeEnd));
-        }
-
-        const { inArray } = require('drizzle-orm');
-        const [ingresos, gastos] = await Promise.all([
-          db
-            .select({ total: sql<string>`COALESCE(SUM(monto), 0)` })
-            .from(movimientosContables)
-            .where(and(...baseFilters, inArray(movimientosContables.tipo, ['ingreso', 'traspaso']))),
-          db
-            .select({ total: sql<string>`COALESCE(SUM(monto), 0)` })
-            .from(movimientosContables)
-            .where(and(...baseFilters, inArray(movimientosContables.tipo, ['gasto', 'egreso']))),
-        ]);
-
-        // Note: the above query is inefficient inside a map, let's optimize it.
-        // But for now, let's fix the cajaId access.
-        // Correction: sessions already has access to cajaId if I select it.
-        return {
-          ...s,
-          totalIngresos: parseFloat(ingresos[0].total),
-          totalGastos: parseFloat(gastos[0].total),
-        };
-      }),
-    );
-
-    // Optimized approach would be better, but let's first refine the selected fields
     return NextResponse.json({
       success: true,
       data: detailedSessions,
@@ -106,7 +102,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+async function updateSession(req: Request) {
   try {
     const body = await req.json();
     const { id, montoApertura, montoCierre, observaciones } = body;
@@ -131,3 +127,8 @@ export async function PUT(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getSessionHistory(req), {
+  requiredPermission: "contabilidad.balance_general",
+});
+export const PUT = withAuth(async (req) => updateSession(req), { requiredPermission: "cajas.configuracion" });

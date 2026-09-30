@@ -68,7 +68,7 @@ export const GET = withAuth(
       return errorResponse(`Error al listar equipos: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.equipos_servicios" },
 );
 
 export const POST = withAuth(
@@ -147,5 +147,5 @@ export const POST = withAuth(
       return errorResponse(`Error al registrar equipo: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:editar" },
+  { requiredPermission: "clientes.editar" },
 );

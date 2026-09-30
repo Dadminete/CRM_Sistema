@@ -13,6 +13,7 @@ import {
   pagosCuentasPorPagar,
 } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 function calcDiasVencido(fechaVencimiento: string, montoPendiente: number) {
   if (montoPendiente <= 0) return 0;
@@ -143,7 +144,7 @@ async function revertCuentaPorPagarPaymentByMovement(tx: any, movementId: string
   await tx.delete(pagosCuentasPorPagar).where(eq(pagosCuentasPorPagar.id, pago.id));
 }
 
-export async function GET(req: Request) {
+async function getMovements(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const tipo = searchParams.get("tipo") ?? "gasto";
@@ -277,7 +278,7 @@ export async function GET(req: Request) {
   }
 }
 
-export async function POST(req: Request) {
+async function createMovement(req: Request) {
   try {
     const body = await req.json();
     const {
@@ -393,7 +394,7 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+async function updateMovement(req: Request) {
   try {
     const body = await req.json();
     const {
@@ -550,7 +551,7 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+async function deleteMovement(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -602,3 +603,12 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async (req) => getMovements(req), { requiredPermission: "contabilidad.balance_general" });
+export const POST = withAuth(async (req) => createMovement(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});
+export const PUT = withAuth(async (req) => updateMovement(req), { requiredPermission: "contabilidad.ingresos_gastos" });
+export const DELETE = withAuth(async (req) => deleteMovement(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});

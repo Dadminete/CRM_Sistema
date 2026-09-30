@@ -3,23 +3,21 @@ import { db } from "@/lib/db";
 import { facturasClientes, cuentasPorCobrar, clientes, pagosClientes, usuarios } from "@/lib/db/schema";
 import { eq, or, sql, desc } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getPartialInvoices(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    console.log('[PAGOS_PARCIALES] Fetching partial payment invoices...');
-    console.log('[PAGOS_PARCIALES] Filters:', { startDate, endDate });
+    console.log("[PAGOS_PARCIALES] Fetching partial payment invoices...");
+    console.log("[PAGOS_PARCIALES] Filters:", { startDate, endDate });
 
     // Facturas con pago parcial
-    let conditions = or(
-      eq(facturasClientes.estado, "parcial"),
-      eq(facturasClientes.estado, "pago parcial"),
-    );
+    let conditions = or(eq(facturasClientes.estado, "parcial"), eq(facturasClientes.estado, "pago parcial"));
 
     // Agregar filtros de fecha si existen
     if (startDate && endDate) {
@@ -27,8 +25,8 @@ export async function GET(req: Request) {
       const end = new Date(endDate);
       conditions = sql`
         (${conditions})
-        AND ${facturasClientes.fechaFactura} >= ${start.toISOString().split('T')[0]}
-        AND ${facturasClientes.fechaFactura} <= ${end.toISOString().split('T')[0]}
+        AND ${facturasClientes.fechaFactura} >= ${start.toISOString().split("T")[0]}
+        AND ${facturasClientes.fechaFactura} <= ${end.toISOString().split("T")[0]}
       `;
     }
 
@@ -94,3 +92,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getPartialInvoices(req), { requiredPermission: "facturas.listado" });

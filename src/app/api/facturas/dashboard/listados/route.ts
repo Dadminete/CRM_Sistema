@@ -3,10 +3,11 @@ import { db } from "@/lib/db";
 import { facturasClientes, cuentasPorCobrar, clientes } from "@/lib/db/schema";
 import { and, asc, desc, eq, ilike, or, sql } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getInvoiceListings(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search") || "";
@@ -20,8 +21,8 @@ export async function GET(req: Request) {
         or(
           ilike(facturasClientes.numeroFactura, `%${search}%`),
           ilike(clientes.nombre, `%${search}%`),
-          ilike(clientes.apellidos, `%${search}%`)
-        )
+          ilike(clientes.apellidos, `%${search}%`),
+        ),
       );
     }
 
@@ -36,7 +37,13 @@ export async function GET(req: Request) {
       } else if (status === "adelantada") {
         conditions.push(or(eq(facturasClientes.estado, "adelantada"), eq(facturasClientes.estado, "adelantado")));
       } else if (status === "anulada") {
-        conditions.push(or(eq(facturasClientes.estado, "anulada"), eq(facturasClientes.estado, "anulado"), eq(facturasClientes.estado, "cancelada")));
+        conditions.push(
+          or(
+            eq(facturasClientes.estado, "anulada"),
+            eq(facturasClientes.estado, "anulado"),
+            eq(facturasClientes.estado, "cancelada"),
+          ),
+        );
       } else {
         conditions.push(ilike(facturasClientes.estado, `%${status}%`));
       }
@@ -71,3 +78,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getInvoiceListings(req), { requiredPermission: "facturas.listado" });

@@ -1,18 +1,18 @@
-import { db } from "@/lib/db";
-import { cajas, movimientosContables } from "@/lib/db/schema";
-import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+import { eq, sql } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+import { cajas, movimientosContables } from "@/lib/db/schema";
+
+async function handlePost(req: Request) {
   try {
     const body = await req.json();
     const { cajaId, montoOficial, descripcion, notas } = body;
 
     if (!cajaId || !montoOficial) {
-      return NextResponse.json(
-        { success: false, error: "cajaId y montoOficial son requeridos" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "cajaId y montoOficial son requeridos" }, { status: 400 });
     }
 
     // Get caja info
@@ -25,10 +25,7 @@ export async function POST(req: Request) {
     }
 
     // Get all movements for this caja
-    const movements = await db
-      .select()
-      .from(movimientosContables)
-      .where(eq(movimientosContables.cajaId, cajaId));
+    const movements = await db.select().from(movimientosContables).where(eq(movimientosContables.cajaId, cajaId));
 
     // Calculate totals
     let totalIngresos = 0;
@@ -46,7 +43,7 @@ export async function POST(req: Request) {
     const calculatedBalance = totalIngresos - totalGastos;
 
     // Insert checkpoint
-    const checkpoint = await db.execute(
+    await db.execute(
       sql`
         INSERT INTO caja_checkpoints (
           caja_id, 
@@ -66,7 +63,7 @@ export async function POST(req: Request) {
           ${notas || `Establecido como punto de referencia oficial. Balance: $${montoOficial}. Calculado: $${calculatedBalance.toFixed(2)}`}
         )
         RETURNING *
-      `
+      `,
     );
 
     return NextResponse.json({
@@ -85,9 +82,8 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Error creating checkpoint:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost, { requiredPermission: "cajas.configuracion" });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
 import { and, eq, gte, inArray, isNull, lte, or, sql, ne } from "drizzle-orm";
 
@@ -144,7 +145,7 @@ async function getTotalGastosUnificado(
   return Number(result[0]?.total ?? 0);
 }
 
-export async function GET() {
+async function getCashStats() {
   try {
     const cajaIds = await getCajaIds();
 
@@ -176,3 +177,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getCashStats(), { requiredPermission: "cajas.dashboard" });

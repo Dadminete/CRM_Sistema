@@ -4,12 +4,13 @@ import { and, desc, eq, gt, ilike, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { clientes, cuentasPorCobrar, facturasClientes } from "@/lib/db/schema";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
 const fmt = (v: unknown) => Number(v ?? 0);
 
-export async function GET() {
+async function getReceivables() {
   try {
     // ── 1. Facturas vencidas (pendiente y más de 5 días desde creación) ──────
     const overdueInvoices = await db
@@ -152,3 +153,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Error al obtener datos" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getReceivables(), { requiredPermission: "contabilidad.balance_general" });

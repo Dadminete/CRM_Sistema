@@ -5,11 +5,12 @@ import { categoriasPapeleria, productosPapeleria } from "@/lib/db/schema";
 import { and, eq } from "drizzle-orm";
 
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
 // GET: devuelve todos los productos (incluye inactivos si ?todos=true)
-export async function GET(req: Request) {
+async function getProducts(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const categoriaId = searchParams.get("categoriaId");
@@ -85,7 +86,7 @@ const productoSchema = z.object({
 });
 
 // POST: crear nuevo producto
-export async function POST(req: NextRequest) {
+async function createProduct(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = productoSchema.safeParse(body);
@@ -134,12 +135,15 @@ export async function POST(req: NextRequest) {
     if (msg.includes("productos_papeleria_codigo_barras_key")) {
       return NextResponse.json({ error: "El código de barras ya está en uso" }, { status: 409 });
     }
-    return NextResponse.json({ 
-      error: "No se pudo crear el producto", 
-      detail: msg,
-      code: error?.code,
-      pgDetail: error?.detail,
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "No se pudo crear el producto",
+        detail: msg,
+        code: error?.code,
+        pgDetail: error?.detail,
+      },
+      { status: 500 },
+    );
   }
 }
 
@@ -148,7 +152,7 @@ const productoUpdateSchema = productoSchema.partial().extend({
 });
 
 // PATCH: editar producto existente
-export async function PATCH(req: NextRequest) {
+async function updateProduct(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = productoUpdateSchema.safeParse(body);
@@ -207,7 +211,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 // DELETE: eliminar producto
-export async function DELETE(req: NextRequest) {
+async function deleteProduct(req: NextRequest) {
   try {
     const body = await req.json();
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(body);
@@ -227,3 +231,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "No se pudo eliminar el producto" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getProducts(req), { requiredPermission: "papeleria.listado" });
+export const POST = withAuth(async (req) => createProduct(req), { requiredPermission: "papeleria.productos" });
+export const PATCH = withAuth(async (req) => updateProduct(req), { requiredPermission: "papeleria.productos" });
+export const DELETE = withAuth(async (req) => deleteProduct(req), { requiredPermission: "papeleria.productos" });

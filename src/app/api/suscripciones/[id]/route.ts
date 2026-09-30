@@ -164,24 +164,21 @@ export const PATCH = withAuth(
       const historyTableCheck = await db.execute(sql`
         SELECT to_regclass('public.historial_suscripciones') AS table_name
       `);
-      const historyTableExists = Boolean((historyTableCheck.rows[0] as { table_name?: string | null } | undefined)?.table_name);
+      const historyTableExists = Boolean(
+        (historyTableCheck.rows[0] as { table_name?: string | null } | undefined)?.table_name,
+      );
 
-      const actorRows = await db
-        .select({ id: usuarios.id })
-        .from(usuarios)
-        .where(eq(usuarios.id, user.id))
-        .limit(1);
+      const actorRows = await db.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, user.id)).limit(1);
       const actorUserId = actorRows[0]?.id ?? null;
 
-      const existingPlan = existingSubscription.planId != null
-        ? await getPlanDetails(existingSubscription.planId)
-        : null;
+      const existingPlan =
+        existingSubscription.planId != null ? await getPlanDetails(existingSubscription.planId) : null;
       const existingService = existingSubscription.servicioId
         ? await getServicioDetails(existingSubscription.servicioId)
         : null;
 
       const changes = [];
-      
+
       if (validatedData.servicioId !== undefined && validatedData.servicioId !== existingSubscription.servicioId) {
         changes.push({
           tipoCambio: "SERVICIO",
@@ -223,11 +220,11 @@ export const PATCH = withAuth(
       if (historyTableExists && changes.length > 0) {
         try {
           await db.insert(historialSuscripciones).values(
-            changes.map(changeObj => ({
+            changes.map((changeObj) => ({
               suscripcionId: id,
               usuarioId: actorUserId,
               ...changeObj,
-            }))
+            })),
           );
         } catch (historyError: unknown) {
           if (historyError && typeof historyError === "object") {
@@ -254,7 +251,9 @@ export const PATCH = withAuth(
           }
         }
       } else if (!historyTableExists && changes.length > 0) {
-        console.warn("Se omite historial de suscripciones porque la tabla historial_suscripciones no existe en la BD local.");
+        console.warn(
+          "Se omite historial de suscripciones porque la tabla historial_suscripciones no existe en la BD local.",
+        );
       }
 
       return successResponse(
@@ -273,5 +272,5 @@ export const PATCH = withAuth(
       return errorResponse(`Error al actualizar la suscripcion: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:editar" },
+  { requiredPermission: "clientes.suscripciones" },
 );

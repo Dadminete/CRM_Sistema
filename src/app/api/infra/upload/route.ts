@@ -5,8 +5,9 @@ import { join } from "path";
 import { NextRequest, NextResponse } from "next/server";
 
 import { put } from "@vercel/blob";
+import { withAuth } from "@/lib/api-auth";
 
-export async function POST(req: NextRequest) {
+async function uploadFile(req: NextRequest) {
   try {
     const formData = await req.formData();
     const file = formData.get("file") as File | null;
@@ -79,3 +80,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Error interno al procesar la carga" }, { status: 500 });
   }
 }
+
+export const POST = withAuth(async (req) => uploadFile(req), { requiredPermission: "gestionar_clientes" });

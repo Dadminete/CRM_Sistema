@@ -3,20 +3,23 @@ import { db } from "@/lib/db";
 import { suscripciones, clientes } from "@/lib/db/schema";
 import { sql } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getBillingDays() {
   try {
     const rows = await db
       .selectDistinct({ dia: suscripciones.diaFacturacion })
       .from(suscripciones)
       .innerJoin(clientes, sql`${suscripciones.clienteId} = ${clientes.id}`)
-      .where(sql`
+      .where(
+        sql`
         ${suscripciones.diaFacturacion} IS NOT NULL 
         AND LOWER(COALESCE(${suscripciones.estado}, '')) = 'activo'
         AND LOWER(COALESCE(${clientes.estado}, '')) = 'activo'
-      `)
+      `,
+      )
       .orderBy(suscripciones.diaFacturacion);
 
     const dias = rows.map((r) => r.dia).filter((d) => d !== null && d !== undefined) as number[];
@@ -27,3 +30,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Error al obtener los días de facturación" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getBillingDays(), { requiredPermission: "facturas.crear" });

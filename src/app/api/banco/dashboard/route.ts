@@ -4,6 +4,7 @@ import { eq, and, sql, desc, ne } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { movimientosContables, categoriasCuentas } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -22,7 +23,7 @@ function rowsFromExecuteResult<T>(result: unknown): T[] {
   return [];
 }
 
-export async function GET() {
+async function getBankDashboard() {
   try {
     const today = startOfDay(new Date());
     const sevenDaysAgo = subDays(today, 7);
@@ -209,3 +210,5 @@ export async function GET() {
     return jsonResponse({ success: false, error: error instanceof Error ? error.message : "Error inesperado" }, 500);
   }
 }
+
+export const GET = withAuth(async () => getBankDashboard(), { requiredPermission: "cajas.cuentas_bancarias" });

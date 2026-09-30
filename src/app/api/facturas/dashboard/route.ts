@@ -5,6 +5,7 @@ import { and, asc, desc, eq, gte, gt, ilike, lt, or, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { clientes, cuentasPorCobrar, facturasClientes, pagosClientes } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -29,7 +30,7 @@ const sumField = (field: unknown, alias: string) => sql<string>`COALESCE(SUM(${f
 const hasAnyState = (field: unknown, states: string[]) => or(...states.map((state) => ilike(field as never, state)));
 
 // eslint-disable-next-line complexity
-export async function GET() {
+async function getInvoiceDashboard() {
   try {
     const now = new Date();
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -345,3 +346,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getInvoiceDashboard(), { requiredPermission: "facturas.dashboard" });

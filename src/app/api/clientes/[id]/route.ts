@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { clientes, facturasClientes, tickets, suscripciones, pagosClientes, usuarios, cuentasPorCobrar, historialSuscripciones, servicios, planes } from "@/lib/db/schema";
+import {
+  clientes,
+  facturasClientes,
+  tickets,
+  suscripciones,
+  pagosClientes,
+  usuarios,
+  cuentasPorCobrar,
+  historialSuscripciones,
+  servicios,
+  planes,
+} from "@/lib/db/schema";
 import { eq, sql, desc, and } from "drizzle-orm";
+import { withAuth } from "@/lib/api-auth";
 
 function isNumericId(value: string | null | undefined): value is string {
   return Boolean(value && /^\d+$/.test(value));
@@ -11,7 +23,7 @@ function isUuid(value: string | null | undefined): value is string {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
 }
 
-export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function getClient(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -158,7 +170,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const planRows = await db
           .select({ id: planes.id, nombre: planes.nombre })
           .from(planes)
-          .where(sql`${planes.id} = ANY(ARRAY[${sql.join(planIds.map((planId) => sql`${planId}`), sql`, `)}]::bigint[])`);
+          .where(
+            sql`${planes.id} = ANY(ARRAY[${sql.join(
+              planIds.map((planId) => sql`${planId}`),
+              sql`, `,
+            )}]::bigint[])`,
+          );
 
         for (const plan of planRows) {
           planNameMap.set(plan.id.toString(), plan.nombre);
@@ -170,7 +187,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         const serviceRows = await db
           .select({ id: servicios.id, nombre: servicios.nombre })
           .from(servicios)
-          .where(sql`${servicios.id} = ANY(ARRAY[${sql.join(serviceIds.map((serviceId) => sql`${serviceId}`), sql`, `)}]::uuid[])`);
+          .where(
+            sql`${servicios.id} = ANY(ARRAY[${sql.join(
+              serviceIds.map((serviceId) => sql`${serviceId}`),
+              sql`, `,
+            )}]::uuid[])`,
+          );
 
         for (const service of serviceRows) {
           serviceNameMap.set(service.id, service.nombre);
@@ -220,7 +242,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             invoices,
             tickets: clientTickets,
             subscriptions: clientSubscriptions,
-            history
+            history,
           },
           (key, value) => (typeof value === "bigint" ? value.toString() : value),
         ),
@@ -265,7 +287,7 @@ function parseBillingDay(value: unknown): number | null {
   return parsed;
 }
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function patchClient(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();
@@ -304,13 +326,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (body.descuentoPorcentaje !== undefined) updateData.descuentoPorcentaje = body.descuentoPorcentaje.toString();
 
     // Remove undefined fields
-    Object.keys(updateData).forEach(key => updateData[key] === undefined && delete updateData[key]);
+    Object.keys(updateData).forEach((key) => updateData[key] === undefined && delete updateData[key]);
 
-    const [updatedClient] = await db
-      .update(clientes)
-      .set(updateData)
-      .where(eq(clientes.id, id))
-      .returning();
+    const [updatedClient] = await db.update(clientes).set(updateData).where(eq(clientes.id, id)).returning();
 
     // Sync status with their active subscriptions if the status changed
     if (body.estado !== undefined) {
@@ -387,7 +405,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function deleteClient(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -399,3 +417,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(getClient, { requiredPermission: "clientes.listado" });
+export const PATCH = withAuth(patchClient, { requiredPermission: "clientes.editar" });
+export const DELETE = withAuth(deleteClient, { requiredPermission: "clientes.eliminar" });

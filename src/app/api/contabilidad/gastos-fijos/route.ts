@@ -4,6 +4,7 @@ import { cacheGet, cacheInvalidate, cacheSet } from "@/lib/api-cache";
 import { db } from "@/lib/db";
 import { pagosFijos, pagosPagosFijos } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 const CACHE_KEY = "gastos-fijos";
 const CACHE_TTL = 60_000; // 60 segundos
@@ -31,7 +32,7 @@ function buildLastMonths(count = 12) {
   return keys;
 }
 
-export async function GET() {
+async function getFixedExpenses() {
   try {
     const cached = cacheGet<object>(CACHE_KEY);
     if (cached) return jsonResponse(cached);
@@ -187,7 +188,7 @@ export async function GET() {
 }
 
 // eslint-disable-next-line complexity
-export async function POST(req: Request) {
+async function createFixedExpense(req: Request) {
   try {
     const body = await req.json();
     const nombre = String(body?.nombre ?? "").trim();
@@ -227,7 +228,7 @@ export async function POST(req: Request) {
 }
 
 // eslint-disable-next-line complexity
-export async function PUT(req: Request) {
+async function updateFixedExpense(req: Request) {
   try {
     const body = await req.json();
     const id = String(body?.id ?? "");
@@ -261,7 +262,7 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+async function deleteFixedExpense(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -285,3 +286,14 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async () => getFixedExpenses(), { requiredPermission: "contabilidad.ingresos_gastos" });
+export const POST = withAuth(async (req) => createFixedExpense(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});
+export const PUT = withAuth(async (req) => updateFixedExpense(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});
+export const DELETE = withAuth(async (req) => deleteFixedExpense(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});

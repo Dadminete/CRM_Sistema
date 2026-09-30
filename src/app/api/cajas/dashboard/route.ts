@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { cajas, sesionesCaja, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
 import { eq, and, sql, desc, gte, ne } from "drizzle-orm";
 import { subDays, startOfDay, startOfMonth } from "date-fns";
 
-export async function GET() {
+async function getCashDashboard() {
   try {
     const today = startOfDay(new Date());
     const sevenDaysAgo = subDays(today, 7);
@@ -171,3 +172,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getCashDashboard(), { requiredPermission: "cajas.dashboard" });

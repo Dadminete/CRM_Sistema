@@ -208,5 +208,5 @@ export const POST = withAuth(
       return errorResponse(`Error en la carga masiva de equipos: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:editar" },
+  { requiredPermission: "clientes.editar" },
 );

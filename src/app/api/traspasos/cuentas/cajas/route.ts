@@ -4,8 +4,9 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { cajas } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
-export async function GET() {
+async function getTransferCashboxes() {
   try {
     const rows = await db
       .select({ id: cajas.id, nombre: cajas.nombre, saldoActual: cajas.saldoActual, activa: cajas.activa })
@@ -18,3 +19,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getTransferCashboxes());

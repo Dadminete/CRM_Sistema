@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
 import { clientes, facturasClientes, pagosClientes } from "@/lib/db/schema";
 import { desc, eq, ilike, or, sql } from "drizzle-orm";
@@ -15,10 +16,7 @@ function parseEstadoFiltro(raw: string | null): EstadoFiltro {
 
 function getEstadoCondition(estadoFiltro: EstadoFiltro) {
   const anuladas = or(ilike(facturasClientes.estado, "anulada"), ilike(facturasClientes.estado, "anulado"));
-  const canceladas = or(
-    ilike(facturasClientes.estado, "cancelada"),
-    ilike(facturasClientes.estado, "cancelado"),
-  );
+  const canceladas = or(ilike(facturasClientes.estado, "cancelada"), ilike(facturasClientes.estado, "cancelado"));
 
   if (estadoFiltro === "anuladas") return anuladas;
   if (estadoFiltro === "canceladas") return canceladas;
@@ -26,7 +24,7 @@ function getEstadoCondition(estadoFiltro: EstadoFiltro) {
   return or(anuladas, canceladas);
 }
 
-export async function GET(req: Request) {
+async function getVoidedInvoices(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const estadoFiltro = parseEstadoFiltro(searchParams.get("estado"));
@@ -78,3 +76,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message ?? "Internal error" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getVoidedInvoices(req), { requiredPermission: "facturas.listado" });

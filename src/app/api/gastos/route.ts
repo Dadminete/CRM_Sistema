@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
 import { and, eq, isNull, ne } from "drizzle-orm";
 
@@ -264,7 +265,7 @@ function normalizeGeneralExpenses(rows: GeneralExpenseRow[]): ExpenseRecord[] {
 }
 
 // eslint-disable-next-line complexity
-export async function GET(req: Request) {
+async function getExpenses(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const defaultRange = getDefaultMonthRange();
@@ -429,3 +430,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async (req) => getExpenses(req), { requiredPermission: "contabilidad.balance_general" });

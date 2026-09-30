@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ type SalesPoint = {
   total: number;
 };
 
-export async function GET() {
+async function getPapeleriaSales() {
   try {
     const now = new Date();
     const startDate = new Date(now.getFullYear(), now.getMonth() - 5, 1);
@@ -100,9 +101,8 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Error fetching papeleria sales chart:", error);
-    return NextResponse.json(
-      { success: false, error: "No se pudo cargar ventas de papeleria" },
-      { status: 500 },
-    );
+    return NextResponse.json({ success: false, error: "No se pudo cargar ventas de papeleria" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getPapeleriaSales(), { requiredPermission: "papeleria.ventas" });

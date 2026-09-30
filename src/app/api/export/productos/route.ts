@@ -62,5 +62,5 @@ export const GET = withAuth(
       return NextResponse.json({ success: false, error: "Error al exportar productos" }, { status: 500 });
     }
   },
-  { requiredPermission: "productos:leer" },
+  { requiredPermission: "papeleria.listado" },
 );

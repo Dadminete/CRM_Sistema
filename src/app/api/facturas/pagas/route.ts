@@ -3,17 +3,18 @@ import { db } from "@/lib/db";
 import { facturasClientes, cuentasPorCobrar, clientes, pagosClientes, usuarios } from "@/lib/db/schema";
 import { eq, and, or, sql, desc, aliasedTable } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getPaidInvoices(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    console.log('[PAGAS] Fetching paid invoices...');
-    console.log('[PAGAS] Filters:', { startDate, endDate });
+    console.log("[PAGAS] Fetching paid invoices...");
+    console.log("[PAGAS] Filters:", { startDate, endDate });
 
     // Facturas pagadas, con pago parcial, o anticipadas
     let conditions = or(
@@ -115,3 +116,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getPaidInvoices(req), { requiredPermission: "facturas.listado" });

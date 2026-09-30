@@ -3,11 +3,12 @@ import { NextResponse } from "next/server";
 import { and, eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 import { suscripciones, clientes } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getNetIncome() {
   try {
     // Calcular la suma de precio_mensual solo para clientes activos y suscripciones activas
     const result = await db
@@ -16,12 +17,7 @@ export async function GET() {
       })
       .from(suscripciones)
       .innerJoin(clientes, eq(suscripciones.clienteId, clientes.id))
-      .where(
-        and(
-          sql`LOWER(${clientes.estado}) = 'activo'`,
-          sql`LOWER(${suscripciones.estado}) = 'activo'`,
-        )
-      );
+      .where(and(sql`LOWER(${clientes.estado}) = 'activo'`, sql`LOWER(${suscripciones.estado}) = 'activo'`));
 
     const totalNetoMensual = Number(result[0]?.total || 0);
 
@@ -44,3 +40,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withAuth(async () => getNetIncome(), { requiredPermission: "contabilidad.balance_general" });

@@ -4,10 +4,11 @@ import { facturasClientes, cuentasPorCobrar, clientes, suscripciones, contratos 
 import { eq, and, or, sql, asc, gte, lte } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
 import { formatearPeriodoFacturado } from "@/app/api/facturas/lib/periodos";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getPendingInvoices(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get("startDate");
@@ -15,8 +16,8 @@ export async function GET(req: Request) {
     const billingDay = searchParams.get("billingDay");
     const clienteId = searchParams.get("clienteId");
 
-    console.log('[PENDIENTES] Fetching pending invoices...');
-    console.log('[PENDIENTES] Filters:', { startDate, endDate, billingDay, clienteId });
+    console.log("[PENDIENTES] Fetching pending invoices...");
+    console.log("[PENDIENTES] Filters:", { startDate, endDate, billingDay, clienteId });
 
     const subquerySuscripciones = db
       .select({
@@ -82,7 +83,10 @@ export async function GET(req: Request) {
 
     console.log(`[PENDIENTES] Found ${pendientes.length} pending invoices`);
     if (pendientes.length > 0) {
-      console.log('[PENDIENTES] First 3:', pendientes.slice(0, 3).map(f => f.numeroFactura));
+      console.log(
+        "[PENDIENTES] First 3:",
+        pendientes.slice(0, 3).map((f) => f.numeroFactura),
+      );
     }
 
     const pendientesConPeriodo = pendientes.map((factura) => ({
@@ -105,3 +109,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getPendingInvoices(req), { requiredPermission: "facturas.listado" });

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { 
-  ventasPapeleria, 
-  detallesVentaPapeleria, 
+import {
+  ventasPapeleria,
+  detallesVentaPapeleria,
   productosPapeleria,
   movimientosInventario,
   movimientosContables,
@@ -20,7 +20,7 @@ import { z } from "zod";
 const carritoItemSchema = z.object({
   productoId: z.coerce.number().int().positive(),
   cantidad: z.coerce.number().int().positive(),
-  lote: z.string().optional()
+  lote: z.string().optional(),
 });
 
 const ventaPOSSchema = z.object({
@@ -34,7 +34,7 @@ const ventaPOSSchema = z.object({
   descuento: z.coerce.number().min(0).default(0),
   montoPagado: z.coerce.number().min(0).optional(),
   notas: z.string().optional(),
-  items: z.array(carritoItemSchema).min(1, "El carrito no puede estar vacío")
+  items: z.array(carritoItemSchema).min(1, "El carrito no puede estar vacío"),
 });
 
 const ventaUpdateSchema = z.object({
@@ -46,17 +46,19 @@ const ventaUpdateSchema = z.object({
   cajaId: z.string().uuid().optional().nullable(),
   cuentaBancariaId: z.string().uuid().optional().nullable(),
   notas: z.string().optional().nullable(),
-  items: z.array(
-    z.object({
-      detalleId: z.string().uuid("Detalle inválido"),
-      cantidad: z.number().int().positive("La cantidad debe ser mayor a 0"),
-      precioUnitario: z.number().positive("El precio debe ser mayor a 0"),
-      descuento: z.number().min(0).default(0),
-    })
-  ).optional(),
+  items: z
+    .array(
+      z.object({
+        detalleId: z.string().uuid("Detalle inválido"),
+        cantidad: z.number().int().positive("La cantidad debe ser mayor a 0"),
+        precioUnitario: z.number().positive("El precio debe ser mayor a 0"),
+        descuento: z.number().min(0).default(0),
+      }),
+    )
+    .optional(),
 });
 
-export async function GET() {
+async function getSales() {
   try {
     const ventasDb = await db
       .select({
@@ -124,218 +126,248 @@ export async function GET() {
   }
 }
 
-export const POST = withAuth(async (req: NextRequest, { user }: { user: { id: string } }) => {
-  try {
-    const body = await req.json();
-    const parseResult = ventaPOSSchema.safeParse(body);
-    
-    if (!parseResult.success) {
-      return NextResponse.json({ error: "Datos de venta inválidos", details: parseResult.error.format() }, { status: 400 });
-    }
-    const data = parseResult.data;
-    const usuarioId = user.id;
+export const POST = withAuth(
+  async (req: NextRequest, { user }: { user: { id: string } }) => {
+    try {
+      const body = await req.json();
+      const parseResult = ventaPOSSchema.safeParse(body);
 
-    const categoriaIngreso = await db
-      .select({ id: categoriasCuentas.id })
-      .from(categoriasCuentas)
-      .where(sql`LOWER(${categoriasCuentas.nombre}) LIKE '%papelería%' OR LOWER(${categoriasCuentas.nombre}) LIKE '%papeleria%'`)
-      .limit(1);
+      if (!parseResult.success) {
+        return NextResponse.json(
+          { error: "Datos de venta inválidos", details: parseResult.error.format() },
+          { status: 400 },
+        );
+      }
+      const data = parseResult.data;
+      const usuarioId = user.id;
 
-    if (!categoriaIngreso[0]?.id) {
-      return NextResponse.json(
-        { error: "No se encontró una categoría contable de ingreso o venta para registrar la venta." },
-        { status: 400 }
-      );
-    }
+      const categoriaIngreso = await db
+        .select({ id: categoriasCuentas.id })
+        .from(categoriasCuentas)
+        .where(
+          sql`LOWER(${categoriasCuentas.nombre}) LIKE '%papelería%' OR LOWER(${categoriasCuentas.nombre}) LIKE '%papeleria%'`,
+        )
+        .limit(1);
 
-    // Procesar transacción
-    const resultadoVenta = await db.transaction(async (tx) => {
-      // 1. Obtener los IDs de los productos del carrito
-      const productIds = data.items.map(item => item.productoId);
-      
-      // 2. Extraer los productos de la base de datos
-      const productosDb = await tx.select().from(productosPapeleria).where(inArray(productosPapeleria.id, productIds));
-      
-      if (productosDb.length !== productIds.length) {
-        throw new Error("Uno o más productos no existen en la base de datos.");
+      if (!categoriaIngreso[0]?.id) {
+        return NextResponse.json(
+          { error: "No se encontró una categoría contable de ingreso o venta para registrar la venta." },
+          { status: 400 },
+        );
       }
 
-      let subtotalTotal = 0;
-      let impuestosTotal = 0;
-      let totalBruto = 0;
+      // Procesar transacción
+      const resultadoVenta = await db.transaction(async (tx) => {
+        // 1. Obtener los IDs de los productos del carrito
+        const productIds = data.items.map((item) => item.productoId);
 
-      const detallesParaInsertar = [];
-      const movimientosParaInsertar = [];
-      const productosParaActualizar = [];
+        // 2. Extraer los productos de la base de datos
+        const productosDb = await tx
+          .select()
+          .from(productosPapeleria)
+          .where(inArray(productosPapeleria.id, productIds));
 
-      // Generar número de venta simple (VP-Timestamp)
-      const numeroVenta = `VP-${Date.now()}`;
-
-      // 3. Validar stock, calcular precios y preparar arreglos
-      for (const item of data.items) {
-        const prodDb = productosDb.find((p) => Number(p.id) === Number(item.productoId));
-        if (!prodDb) continue;
-
-        if (prodDb.stockActual < item.cantidad) {
-          throw new Error(`Stock insuficiente para el producto: ${prodDb.nombre}`);
+        if (productosDb.length !== productIds.length) {
+          throw new Error("Uno o más productos no existen en la base de datos.");
         }
 
-        const precioMonto = Number(prodDb.precioVenta);
-        const subtotalItem = precioMonto * item.cantidad;
-        
-        // ITBIS: Calculado solo si aplica (Tú indicaste que estará apagado por defecto)
-        let impuestoItem = 0;
-        if (prodDb.aplicaImpuesto) {
-          impuestoItem = subtotalItem * (Number(prodDb.tasaImpuesto) / 100);
-        }
+        let subtotalTotal = 0;
+        let impuestosTotal = 0;
+        let totalBruto = 0;
 
-        const totalItem = subtotalItem + impuestoItem;
+        const detallesParaInsertar = [];
+        const movimientosParaInsertar = [];
+        const productosParaActualizar = [];
 
-        subtotalTotal += subtotalItem;
-        impuestosTotal += impuestoItem;
-        totalBruto += totalItem;
+        // Generar número de venta simple (VP-Timestamp)
+        const numeroVenta = `VP-${Date.now()}`;
 
-        // Preparar actualización de stock
-        productosParaActualizar.push({
-          id: prodDb.id,
-          nuevoStock: prodDb.stockActual - item.cantidad
-        });
+        // 3. Validar stock, calcular precios y preparar arreglos
+        for (const item of data.items) {
+          const prodDb = productosDb.find((p) => Number(p.id) === Number(item.productoId));
+          if (!prodDb) continue;
 
-        // Preparar líneas de detalle conectadas al producto (aún nos falta el ID de venta, se inyecta después)
-        detallesParaInsertar.push({
-          productoId: prodDb.id,
-          nombreProducto: prodDb.nombre,
-          cantidad: item.cantidad,
-          precioUnitario: precioMonto.toString(),
-          subtotal: subtotalItem.toString(),
-          impuesto: impuestoItem.toString(),
-          descuento: "0",
-          total: totalItem.toString(),
-          lote: item.lote,
-          cantidadDevuelta: 0
-        });
+          if (prodDb.stockActual < item.cantidad) {
+            throw new Error(`Stock insuficiente para el producto: ${prodDb.nombre}`);
+          }
 
-        // Preparar log de inventario
-        movimientosParaInsertar.push({
-          productoId: prodDb.id,
-          usuarioId,
-          tipoMovimiento: "SALIDA_VENTA",
-          cantidad: item.cantidad,
-          cantidadAnterior: prodDb.stockActual,
-          cantidadNueva: prodDb.stockActual - item.cantidad,
-          motivo: `Venta POS #${numeroVenta}`,
-          referencia: numeroVenta
-        });
-      }
+          const precioMonto = Number(prodDb.precioVenta);
+          const subtotalItem = precioMonto * item.cantidad;
 
-      if (detallesParaInsertar.length === 0) {
-        throw new Error("No se pudo construir el detalle de la venta. Verifica los productos seleccionados.");
-      }
+          // ITBIS: Calculado solo si aplica (Tú indicaste que estará apagado por defecto)
+          let impuestoItem = 0;
+          if (prodDb.aplicaImpuesto) {
+            impuestoItem = subtotalItem * (Number(prodDb.tasaImpuesto) / 100);
+          }
 
-      const descuentoAplicado = Math.min(data.descuento ?? 0, totalBruto);
-      const totalFinal = Math.max(0, totalBruto - descuentoAplicado);
-      const montoPagadoInput = data.montoPagado ?? 0;
+          const totalItem = subtotalItem + impuestoItem;
 
-      if (data.metodoPago === "EFECTIVO" && montoPagadoInput > 0 && montoPagadoInput < totalFinal) {
-        throw new Error("El monto pagado es insuficiente para completar la venta.");
-      }
+          subtotalTotal += subtotalItem;
+          impuestosTotal += impuestoItem;
+          totalBruto += totalItem;
 
-      const montoCobrado = data.metodoPago === "CREDITO" ? 0 : totalFinal;
-      const estadoVenta = data.metodoPago === "CREDITO" && totalFinal > 0 ? "PENDIENTE" : "COMPLETADA";
+          // Preparar actualización de stock
+          productosParaActualizar.push({
+            id: prodDb.id,
+            nuevoStock: prodDb.stockActual - item.cantidad,
+            cantidad: item.cantidad,
+          });
 
-      // 4. Insertar Cabecera de la VentaPapeleria
-      const [nuevaVenta] = await tx.insert(ventasPapeleria).values({
-        numeroVenta,
-        usuarioId,
-        clienteId: data.clienteId,
-        clienteNombre: data.clienteNombre,
-        clienteCedula: data.clienteCedula,
-        subtotal: subtotalTotal.toString(),
-        impuestos: impuestosTotal.toString(),
-        descuentos: descuentoAplicado.toFixed(2),
-        total: totalFinal.toString(),
-        metodoPago: data.metodoPago as any,
-        estado: estadoVenta as any,
-        notas: data.notas,
-        cajaId: data.cajaId,
-        cuentaBancariaId: data.cuentaBancariaId,
-        moneda: "DOP", // o dinámico
-        updatedAt: new Date().toISOString(),
-      }).returning();
+          // Preparar líneas de detalle conectadas al producto (aún nos falta el ID de venta, se inyecta después)
+          detallesParaInsertar.push({
+            productoId: prodDb.id,
+            nombreProducto: prodDb.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: precioMonto.toString(),
+            subtotal: subtotalItem.toString(),
+            impuesto: impuestoItem.toString(),
+            descuento: "0",
+            total: totalItem.toString(),
+            lote: item.lote,
+            cantidadDevuelta: 0,
+          });
 
-      if (montoCobrado > 0) {
-        let bankId: string | null = null;
-        if (data.cuentaBancariaId) {
-          const cuentaBancaria = await tx
-            .select({ bankId: cuentasBancarias.bankId })
-            .from(cuentasBancarias)
-            .where(eq(cuentasBancarias.id, data.cuentaBancariaId))
-            .limit(1);
-
-          bankId = cuentaBancaria[0]?.bankId ?? null;
-        }
-
-        const metodoContable = data.metodoPago === "EFECTIVO" ? "efectivo" : "banco";
-
-        const [movimientoContable] = await tx
-          .insert(movimientosContables)
-          .values({
-            tipo: "ingreso",
-            monto: montoCobrado.toFixed(2),
-            categoriaId: categoriaIngreso[0].id,
-            metodo: metodoContable,
-            cajaId: data.metodoPago === "EFECTIVO" ? (data.cajaId ?? null) : null,
-            bankId,
-            cuentaBancariaId: data.metodoPago === "EFECTIVO" ? null : (data.cuentaBancariaId ?? null),
-            descripcion: `Venta de papeleria ${numeroVenta}`,
-            fecha: new Date().toISOString(),
+          // Preparar log de inventario
+          movimientosParaInsertar.push({
+            productoId: prodDb.id,
             usuarioId,
+            tipoMovimiento: "SALIDA_VENTA",
+            cantidad: item.cantidad,
+            cantidadAnterior: prodDb.stockActual,
+            cantidadNueva: prodDb.stockActual - item.cantidad,
+            motivo: `Venta POS #${numeroVenta}`,
+            referencia: numeroVenta,
+          });
+        }
+
+        if (detallesParaInsertar.length === 0) {
+          throw new Error("No se pudo construir el detalle de la venta. Verifica los productos seleccionados.");
+        }
+
+        const descuentoAplicado = Math.min(data.descuento ?? 0, totalBruto);
+        const totalFinal = Math.max(0, totalBruto - descuentoAplicado);
+        const montoPagadoInput = data.montoPagado ?? 0;
+
+        if (data.metodoPago === "EFECTIVO" && montoPagadoInput > 0 && montoPagadoInput < totalFinal) {
+          throw new Error("El monto pagado es insuficiente para completar la venta.");
+        }
+
+        const montoCobrado = data.metodoPago === "CREDITO" ? 0 : totalFinal;
+        const estadoVenta = data.metodoPago === "CREDITO" && totalFinal > 0 ? "PENDIENTE" : "COMPLETADA";
+
+        // 4. Insertar Cabecera de la VentaPapeleria
+        const [nuevaVenta] = await tx
+          .insert(ventasPapeleria)
+          .values({
+            numeroVenta,
+            usuarioId,
+            clienteId: data.clienteId,
+            clienteNombre: data.clienteNombre,
+            clienteCedula: data.clienteCedula,
+            subtotal: subtotalTotal.toString(),
+            impuestos: impuestosTotal.toString(),
+            descuentos: descuentoAplicado.toFixed(2),
+            total: totalFinal.toString(),
+            metodoPago: data.metodoPago as any,
+            estado: estadoVenta as any,
+            notas: data.notas,
+            cajaId: data.cajaId,
+            cuentaBancariaId: data.cuentaBancariaId,
+            moneda: "DOP", // o dinámico
             updatedAt: new Date().toISOString(),
           })
-          .returning({ id: movimientosContables.id });
+          .returning();
 
-        await tx
-          .update(ventasPapeleria)
-          .set({ movimientoContableId: movimientoContable.id })
-          .where(eq(ventasPapeleria.id, nuevaVenta.id));
+        if (montoCobrado > 0) {
+          let bankId: string | null = null;
+          if (data.cuentaBancariaId) {
+            const cuentaBancaria = await tx
+              .select({ bankId: cuentasBancarias.bankId })
+              .from(cuentasBancarias)
+              .where(eq(cuentasBancarias.id, data.cuentaBancariaId))
+              .limit(1);
 
-        if (data.metodoPago === "EFECTIVO" && data.cajaId) {
-          await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${montoCobrado} WHERE id = ${data.cajaId}`);
+            bankId = cuentaBancaria[0]?.bankId ?? null;
+          }
+
+          const metodoContable = data.metodoPago === "EFECTIVO" ? "efectivo" : "banco";
+
+          const [movimientoContable] = await tx
+            .insert(movimientosContables)
+            .values({
+              tipo: "ingreso",
+              monto: montoCobrado.toFixed(2),
+              categoriaId: categoriaIngreso[0].id,
+              metodo: metodoContable,
+              cajaId: data.metodoPago === "EFECTIVO" ? (data.cajaId ?? null) : null,
+              bankId,
+              cuentaBancariaId: data.metodoPago === "EFECTIVO" ? null : (data.cuentaBancariaId ?? null),
+              descripcion: `Venta de papeleria ${numeroVenta}`,
+              fecha: new Date().toISOString(),
+              usuarioId,
+              updatedAt: new Date().toISOString(),
+            })
+            .returning({ id: movimientosContables.id });
+
+          await tx
+            .update(ventasPapeleria)
+            .set({ movimientoContableId: movimientoContable.id })
+            .where(eq(ventasPapeleria.id, nuevaVenta.id));
+
+          if (data.metodoPago === "EFECTIVO" && data.cajaId) {
+            await tx.execute(
+              sql`UPDATE cajas SET saldo_actual = saldo_actual + ${montoCobrado} WHERE id = ${data.cajaId}`,
+            );
+          }
         }
-      }
 
-      // 5. Inyectar el ID de la venta en los detalles e insertarlos
-      const detallesConVenta = detallesParaInsertar.map(d => ({ ...d, ventaId: nuevaVenta.id }));
-      await tx.insert(detallesVentaPapeleria).values(detallesConVenta);
+        // 5. Inyectar el ID de la venta en los detalles e insertarlos
+        const detallesConVenta = detallesParaInsertar.map((d) => ({ ...d, ventaId: nuevaVenta.id }));
+        await tx.insert(detallesVentaPapeleria).values(detallesConVenta);
 
-      // 6. Actualizar Stocks Individuales
-      for (const req of productosParaActualizar) {
-        await tx.update(productosPapeleria)
-          .set({ stockActual: req.nuevoStock })
-          .where(eq(productosPapeleria.id, req.id));
-      }
+        // 6. Actualizar Stocks Individuales
+        for (const producto of productosParaActualizar) {
+          const [actualizado] = await tx
+            .update(productosPapeleria)
+            .set({ stockActual: sql`${productosPapeleria.stockActual} - ${producto.cantidad}` })
+            .where(and(eq(productosPapeleria.id, producto.id), gte(productosPapeleria.stockActual, producto.cantidad)))
+            .returning({ stockActual: productosPapeleria.stockActual });
 
-      // 7. Generar log/movimientos de inventario
-      await tx.insert(movimientosInventario).values(movimientosParaInsertar as any);
+          if (!actualizado)
+            throw new Error("Stock insuficiente por una venta concurrente. Actualiza el carrito e inténtalo de nuevo.");
 
-      return nuevaVenta;
-    });
+          const movimiento = movimientosParaInsertar.find((item) => item.productoId === producto.id);
+          if (movimiento) {
+            movimiento.cantidadAnterior = actualizado.stockActual + producto.cantidad;
+            movimiento.cantidadNueva = actualizado.stockActual;
+          }
+        }
 
-    return jsonResponse({ 
-      success: true, 
-      message: "Venta registrada con éxito", 
-      venta: resultadoVenta
-    });
+        // 7. Generar log/movimientos de inventario
+        await tx.insert(movimientosInventario).values(movimientosParaInsertar as any);
 
-  } catch (error: any) {
-    console.error("Error procesando venta POS:", error);
-    return NextResponse.json({ 
-      error: error.message || "Error interno del servidor procesando la venta" 
-    }, { status: 400 }); // Status 400 por si lanzó error de Stock
-  }
-});
+        return nuevaVenta;
+      });
 
-export async function PATCH(req: Request) {
+      return jsonResponse({
+        success: true,
+        message: "Venta registrada con éxito",
+        venta: resultadoVenta,
+      });
+    } catch (error: any) {
+      console.error("Error procesando venta POS:", error);
+      return NextResponse.json(
+        {
+          error: error.message || "Error interno del servidor procesando la venta",
+        },
+        { status: 400 },
+      ); // Status 400 por si lanzó error de Stock
+    }
+  },
+  { requiredPermission: "papeleria.ventas" },
+);
+
+async function updateSale(req: Request) {
   try {
     const body = await req.json();
     const parsed = ventaUpdateSchema.safeParse(body);
@@ -419,7 +451,9 @@ export async function PATCH(req: Request) {
               descuento: descuentoLinea.toFixed(2),
               total: totalLinea.toFixed(2),
             })
-            .where(and(eq(detallesVentaPapeleria.id, item.detalleId), eq(detallesVentaPapeleria.ventaId, data.ventaId)));
+            .where(
+              and(eq(detallesVentaPapeleria.id, item.detalleId), eq(detallesVentaPapeleria.ventaId, data.ventaId)),
+            );
         }
 
         await tx
@@ -436,18 +470,31 @@ export async function PATCH(req: Request) {
 
       if (data.estado === "CANCELADA" && ventaActual.estado !== "CANCELADA") {
         if (ventaActual.cajaId && ventaActual.metodoPago === "EFECTIVO") {
-          await tx.update(cajas).set({ saldoActual: sql`${cajas.saldoActual} - ${ventaActual.total}` }).where(eq(cajas.id, ventaActual.cajaId));
+          await tx
+            .update(cajas)
+            .set({ saldoActual: sql`${cajas.saldoActual} - ${ventaActual.total}` })
+            .where(eq(cajas.id, ventaActual.cajaId));
         }
-        
+
         if (ventaActual.movimientoContableId) {
           await tx.delete(movimientosContables).where(eq(movimientosContables.id, ventaActual.movimientoContableId));
         }
 
-        const detalles = await tx.select().from(detallesVentaPapeleria).where(eq(detallesVentaPapeleria.ventaId, ventaActual.id));
+        const detalles = await tx
+          .select()
+          .from(detallesVentaPapeleria)
+          .where(eq(detallesVentaPapeleria.ventaId, ventaActual.id));
         for (const d of detalles) {
-          const [prod] = await tx.select().from(productosPapeleria).where(eq(productosPapeleria.id, d.productoId)).limit(1);
+          const [prod] = await tx
+            .select()
+            .from(productosPapeleria)
+            .where(eq(productosPapeleria.id, d.productoId))
+            .limit(1);
           if (prod) {
-             await tx.update(productosPapeleria).set({ stockActual: prod.stockActual + d.cantidad }).where(eq(productosPapeleria.id, prod.id));
+            await tx
+              .update(productosPapeleria)
+              .set({ stockActual: prod.stockActual + d.cantidad })
+              .where(eq(productosPapeleria.id, prod.id));
           }
         }
       }
@@ -459,19 +506,20 @@ export async function PATCH(req: Request) {
           clienteCedula: data.clienteCedula ?? ventaActual.clienteCedula,
           metodoPago: (data.metodoPago ?? ventaActual.metodoPago) as any,
           estado: (data.estado ?? ventaActual.estado) as any,
-          cajaId: data.estado === "CANCELADA" ? null : (data.cajaId === undefined ? ventaActual.cajaId : data.cajaId),
-          cuentaBancariaId: data.estado === "CANCELADA" ? null : (data.cuentaBancariaId === undefined ? ventaActual.cuentaBancariaId : data.cuentaBancariaId),
+          cajaId: data.estado === "CANCELADA" ? null : data.cajaId === undefined ? ventaActual.cajaId : data.cajaId,
+          cuentaBancariaId:
+            data.estado === "CANCELADA"
+              ? null
+              : data.cuentaBancariaId === undefined
+                ? ventaActual.cuentaBancariaId
+                : data.cuentaBancariaId,
           movimientoContableId: data.estado === "CANCELADA" ? null : ventaActual.movimientoContableId,
           notas: data.notas ?? ventaActual.notas,
           updatedAt: new Date().toISOString(),
         })
         .where(eq(ventasPapeleria.id, data.ventaId));
 
-      const [ventaFinal] = await tx
-        .select()
-        .from(ventasPapeleria)
-        .where(eq(ventasPapeleria.id, data.ventaId))
-        .limit(1);
+      const [ventaFinal] = await tx.select().from(ventasPapeleria).where(eq(ventasPapeleria.id, data.ventaId)).limit(1);
 
       return ventaFinal;
     });
@@ -482,3 +530,6 @@ export async function PATCH(req: Request) {
     return NextResponse.json({ error: error.message ?? "No se pudo actualizar la venta" }, { status: 400 });
   }
 }
+
+export const GET = withAuth(async () => getSales(), { requiredPermission: "papeleria.ventas" });
+export const PATCH = withAuth(async (req) => updateSale(req), { requiredPermission: "papeleria.ventas" });

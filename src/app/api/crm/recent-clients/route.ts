@@ -7,6 +7,7 @@ import { desc } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { clientes } from "@/lib/db/schema";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -32,7 +33,7 @@ async function resolveClientPhotoUrl(fotoUrl: string | null) {
   return null;
 }
 
-export async function GET() {
+async function getRecentClients() {
   try {
     const data = await db
       .select({
@@ -61,3 +62,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: "Error al cargar clientes recientes" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getRecentClients(), { requiredPermission: "clientes.listado" });

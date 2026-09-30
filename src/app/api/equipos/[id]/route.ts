@@ -157,7 +157,7 @@ export const PATCH = withAuth(
       return errorResponse(`Error al actualizar equipo: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:editar" },
+  { requiredPermission: "clientes.editar" },
 );
 
 export const DELETE = withAuth(
@@ -184,5 +184,5 @@ export const DELETE = withAuth(
       return errorResponse(`Error al eliminar equipo: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:editar" },
+  { requiredPermission: "clientes.editar" },
 );

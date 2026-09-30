@@ -4,10 +4,11 @@ import { and, desc, eq, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { clientes, facturasClientes, pagosClientes } from "@/lib/db/schema";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function getReceivableHistory(req: Request) {
   const { searchParams } = new URL(req.url);
   const clienteId = searchParams.get("clienteId");
   const currentYear = new Date().getFullYear();
@@ -58,3 +59,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: "Error al obtener historial" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getReceivableHistory(req), {
+  requiredPermission: "contabilidad.balance_general",
+});

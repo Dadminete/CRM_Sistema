@@ -1,5 +1,6 @@
 import { buildAccountingDashboardMetrics, getAccountingDashboardData } from "@/lib/contabilidad/dashboard-data";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -43,7 +44,7 @@ function getEmptyDashboardData() {
   });
 }
 
-export async function GET() {
+export async function getAccountingDashboard() {
   try {
     const data = await getAccountingDashboardData();
     return jsonResponse({ success: true, data, diagnostics: { kind: "ok", message: "Datos cargados correctamente" } });
@@ -53,3 +54,5 @@ export async function GET() {
     return jsonResponse({ success: true, data: getEmptyDashboardData(), diagnostics }, 200);
   }
 }
+
+export const GET = withAuth(async () => getAccountingDashboard(), { requiredPermission: "contabilidad.dashboard" });

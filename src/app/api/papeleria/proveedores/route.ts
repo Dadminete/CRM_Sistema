@@ -5,10 +5,11 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { proveedores } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getProviders() {
   try {
     const lista = await db
       .select({
@@ -91,7 +92,7 @@ function buildProviderPatch(body: Record<string, unknown>) {
   return patch;
 }
 
-export async function POST(req: Request) {
+async function createProvider(req: Request) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const nombre = normalizeText(body.nombre);
@@ -120,7 +121,7 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+async function updateProvider(req: Request) {
   try {
     const body = (await req.json()) as Record<string, unknown>;
     const id = normalizeText(body.id);
@@ -141,7 +142,7 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+async function deleteProvider(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -160,3 +161,8 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async () => getProviders(), { requiredPermission: "papeleria.productos" });
+export const POST = withAuth(async (req) => createProvider(req), { requiredPermission: "papeleria.productos" });
+export const PUT = withAuth(async (req) => updateProvider(req), { requiredPermission: "papeleria.productos" });
+export const DELETE = withAuth(async (req) => deleteProvider(req), { requiredPermission: "papeleria.productos" });

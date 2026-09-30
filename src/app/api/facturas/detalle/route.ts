@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 import { sql, eq, and } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { facturasClientes, clientes, detalleFacturas, cuentasPorCobrar, pagosClientes, usuarios } from "@/lib/db/schema";
+import {
+  facturasClientes,
+  clientes,
+  detalleFacturas,
+  cuentasPorCobrar,
+  pagosClientes,
+  usuarios,
+} from "@/lib/db/schema";
 import { desc } from "drizzle-orm";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +18,7 @@ type SuscripcionConPlan = {
   plan_nombre: string | null;
 };
 
-export async function GET(req: Request) {
+async function getInvoiceDetails(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -128,3 +136,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getInvoiceDetails(req), { requiredPermission: "facturas.listado" });

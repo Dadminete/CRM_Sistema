@@ -1,18 +1,18 @@
-import { db } from "@/lib/db";
-import { movimientosContables, cajas } from "@/lib/db/schema";
-import { eq, inArray } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+import { eq, inArray } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+import { movimientosContables, cajas } from "@/lib/db/schema";
+
+async function handlePost(req: Request) {
   try {
     const body = await req.json();
     const { idsToDelete, cajaId, newBalance } = body;
 
     if (!idsToDelete || !Array.isArray(idsToDelete) || idsToDelete.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No IDs provided to delete" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "No IDs provided to delete" }, { status: 400 });
     }
 
     // Delete duplicate movements
@@ -45,9 +45,8 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Delete error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost, { requiredPermission: "contabilidad.ingresos_gastos" });

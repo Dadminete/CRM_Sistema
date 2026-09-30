@@ -82,5 +82,5 @@ export const GET = withAuth(
       return CommonErrors.internalError("Error al verificar stock bajo");
     }
   },
-  { requiredPermission: "productos:leer" },
+  { requiredPermission: "papeleria.listado" },
 );

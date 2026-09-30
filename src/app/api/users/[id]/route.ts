@@ -3,8 +3,9 @@ import { db } from "@/lib/db";
 import { usuarios, usuariosRoles } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { hashPassword } from "@/lib/auth";
+import { withAuth } from "@/lib/api-auth";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function patchUser(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();
@@ -12,14 +13,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
     // Si el password viene, lo hasheamos y actualizamos passwordHash
     const dataToUpdate: any = {};
-    
+
     // Solo incluir campos que tengan valor
     Object.entries(userData).forEach(([key, value]) => {
       if (value !== null && value !== undefined && value !== "") {
         dataToUpdate[key] = value;
       }
     });
-    
+
     if (password && password.trim() !== "") {
       // Hash the password before storing
       dataToUpdate.passwordHash = await hashPassword(password);
@@ -66,7 +67,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function deleteUser(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -81,3 +82,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const PATCH = withAuth(patchUser, { requiredPermission: "usuarios:editar" });
+export const DELETE = withAuth(deleteUser, { requiredPermission: "usuarios:eliminar" });

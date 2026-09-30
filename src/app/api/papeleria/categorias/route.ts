@@ -4,11 +4,12 @@ import { db } from "@/lib/db";
 import { categoriasPapeleria } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
 // GET: devuelve categorías (activas por defecto, todas si ?todos=true)
-export async function GET(req: Request) {
+async function getCategories(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const todos = searchParams.get("todos") === "true";
@@ -46,7 +47,7 @@ const categoriaSchema = z.object({
 });
 
 // POST: crear categoría
-export async function POST(req: NextRequest) {
+async function createCategory(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = categoriaSchema.safeParse(body);
@@ -87,7 +88,7 @@ const categoriaUpdateSchema = categoriaSchema.partial().extend({
 });
 
 // PATCH: editar categoría
-export async function PATCH(req: NextRequest) {
+async function updateCategory(req: NextRequest) {
   try {
     const body = await req.json();
     const parsed = categoriaUpdateSchema.safeParse(body);
@@ -129,7 +130,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 // DELETE: eliminar categoría
-export async function DELETE(req: NextRequest) {
+async function deleteCategory(req: NextRequest) {
   try {
     const body = await req.json();
     const { id } = z.object({ id: z.coerce.number().int().positive() }).parse(body);
@@ -149,3 +150,8 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "No se pudo eliminar la categoría" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getCategories(req), { requiredPermission: "papeleria.listado" });
+export const POST = withAuth(async (req) => createCategory(req), { requiredPermission: "papeleria.categorias" });
+export const PATCH = withAuth(async (req) => updateCategory(req), { requiredPermission: "papeleria.categorias" });
+export const DELETE = withAuth(async (req) => deleteCategory(req), { requiredPermission: "papeleria.categorias" });

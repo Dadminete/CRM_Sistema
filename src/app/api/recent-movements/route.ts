@@ -3,11 +3,12 @@ import { desc, and, gte, lte, eq, ne } from "drizzle-orm";
 import { endOfMonth, startOfMonth } from "date-fns";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 import { banks, categoriasCuentas, movimientosContables } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getRecentMovements() {
   try {
     const now = new Date();
     const firstDay = startOfMonth(now);
@@ -41,7 +42,10 @@ export async function GET() {
               lte(movimientosContables.fecha, lastDay.toISOString()),
               ne(movimientosContables.categoriaId, traspasoCatId),
             )
-          : and(gte(movimientosContables.fecha, firstDay.toISOString()), lte(movimientosContables.fecha, lastDay.toISOString())),
+          : and(
+              gte(movimientosContables.fecha, firstDay.toISOString()),
+              lte(movimientosContables.fecha, lastDay.toISOString()),
+            ),
       )
       .orderBy(desc(movimientosContables.fecha));
 
@@ -55,3 +59,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: message, data: [] }, { status: 200 });
   }
 }
+
+export const GET = withAuth(async () => getRecentMovements(), { requiredPermission: "contabilidad.balance_general" });

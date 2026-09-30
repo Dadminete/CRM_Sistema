@@ -86,5 +86,5 @@ export const GET = withAuth(
       return NextResponse.json({ success: false, error: "Error al exportar facturas" }, { status: 500 });
     }
   },
-  { requiredPermission: "facturas:leer" },
+  { requiredPermission: "facturas.listado" },
 );

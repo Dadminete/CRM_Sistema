@@ -3,6 +3,7 @@
 import { db } from "@/lib/db";
 import { categoriasCuentas } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 const ACCOUNT_TYPE_PREFIX: Record<string, string> = {
   ACTIVO: "1",
@@ -132,7 +133,7 @@ async function resolveParent(padreId: string | null) {
   return parent as CategoryRecord;
 }
 
-export async function GET(req: Request) {
+async function getAccountCategories(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const normalizedType = normalizeAccountType(searchParams.get("type"));
@@ -151,7 +152,7 @@ export async function GET(req: Request) {
 }
 
 // eslint-disable-next-line complexity
-export async function POST(req: Request) {
+async function createAccountCategory(req: Request) {
   try {
     const body = await req.json();
     const nombre = normalizeText(body.nombre);
@@ -210,7 +211,7 @@ export async function POST(req: Request) {
 }
 
 // eslint-disable-next-line complexity
-export async function PUT(req: Request) {
+async function updateAccountCategory(req: Request) {
   try {
     const body = await req.json();
     const id = normalizeText(body.id);
@@ -280,7 +281,7 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+async function deleteAccountCategory(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -303,3 +304,16 @@ export async function DELETE(req: Request) {
     return jsonResponse({ success: false, error: message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getAccountCategories(req), {
+  requiredPermission: "contabilidad.categorias_cuentas",
+});
+export const POST = withAuth(async (req) => createAccountCategory(req), {
+  requiredPermission: "contabilidad.categorias_cuentas",
+});
+export const PUT = withAuth(async (req) => updateAccountCategory(req), {
+  requiredPermission: "contabilidad.categorias_cuentas",
+});
+export const DELETE = withAuth(async (req) => deleteAccountCategory(req), {
+  requiredPermission: "contabilidad.categorias_cuentas",
+});

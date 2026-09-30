@@ -1,14 +1,17 @@
-import { db } from "@/lib/db";
-import { cajas, movimientosContables } from "@/lib/db/schema";
-import { eq, desc } from "drizzle-orm";
 import { NextResponse } from "next/server";
+
+import { desc, eq } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+import { movimientosContables } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
 
-export async function GET(req: Request) {
+async function handleGet(_req: Request) {
   try {
     // Get all cajas
     const allCajas = await db.query.cajas.findMany();
-    
+
     const audit = [];
 
     for (const caja of allCajas) {
@@ -31,7 +34,7 @@ export async function GET(req: Request) {
       const difference = dbBalance - calculatedBalance;
 
       // Check for duplicates
-      const movementMap = new Map<string, typeof movements[0][]>();
+      const movementMap = new Map<string, (typeof movements)[0][]>();
       movements.forEach((m) => {
         const key = `${m.tipo}-${m.monto}-${m.descripcion}`;
         if (!movementMap.has(key)) movementMap.set(key, []);
@@ -86,3 +89,5 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(handleGet, { requiredPermission: "contabilidad.balance_general" });

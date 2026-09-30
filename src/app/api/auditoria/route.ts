@@ -104,5 +104,5 @@ export const GET = withAuth(
       return CommonErrors.internalError("Error al obtener registros de auditoría");
     }
   },
-  { requiredPermission: "auditoria:leer" },
+  { requiredPermission: "usuarios.bitacora" },
 );

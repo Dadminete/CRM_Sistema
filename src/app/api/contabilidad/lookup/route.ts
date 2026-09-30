@@ -4,6 +4,7 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { categoriasCuentas, banks, cuentasBancarias, cajas, cuentasPorPagar, proveedores } from "@/lib/db/schema";
+import { withAuth } from "@/lib/api-auth";
 
 const ACCOUNT_TYPE_ALIASES: Record<string, string> = {
   ACTIVO: "ACTIVO",
@@ -44,7 +45,7 @@ function getTypeVariants(rawType: string) {
   return [...variants];
 }
 
-export async function GET(req: Request) {
+async function getAccountingLookups(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const tipoCategoria = searchParams.get("tipoCategoria"); // e.g., "gasto" or "ingreso"
@@ -128,3 +129,7 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async (req) => getAccountingLookups(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});

@@ -4,8 +4,9 @@ import { desc, eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { cuentasBancarias, banks } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
-export async function GET() {
+async function getTransferBankAccounts() {
   try {
     const rows = await db
       .select({
@@ -27,3 +28,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getTransferBankAccounts());

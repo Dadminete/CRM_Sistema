@@ -168,7 +168,7 @@ export const DELETE = withAuth(
       );
     }
   },
-  { requiredPermission: "contabilidad:editar" },
+  { requiredPermission: "contabilidad.traspasos" },
 );
 
 export const PATCH = withAuth(

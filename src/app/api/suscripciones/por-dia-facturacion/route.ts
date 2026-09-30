@@ -3,6 +3,7 @@ import { and, or, eq, ilike, sql, asc } from "drizzle-orm";
 
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 import { suscripciones, clientes, servicios, planes, facturasClientes } from "@/lib/db/schema";
 
 /**
@@ -11,7 +12,7 @@ import { suscripciones, clientes, servicios, planes, facturasClientes } from "@/
  * Query params:
  *  - diaFacturacion: number (1-31)
  */
-export async function GET(request: NextRequest) {
+async function getSubscriptionsByBillingDay(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const diaFacturacion = searchParams.get("diaFacturacion");
@@ -51,8 +52,8 @@ export async function GET(request: NextRequest) {
           ilike(clientes.nombre, `%${search}%`),
           ilike(clientes.apellidos, `%${search}%`),
           ilike(clientes.codigoCliente, `%${search}%`),
-          ilike(suscripciones.numeroContrato, `%${search}%`)
-        )
+          ilike(suscripciones.numeroContrato, `%${search}%`),
+        ),
       );
     }
 
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
         descuento_aplicado: suscripciones.descuentoAplicado,
         fecha_proximo_pago: suscripciones.fechaProximoPago,
         dia_facturacion: suscripciones.diaFacturacion,
-        
+
         // Datos del cliente
         cliente_id: clientes.id,
         codigo_cliente: clientes.codigoCliente,
@@ -79,13 +80,13 @@ export async function GET(request: NextRequest) {
         cliente_email: clientes.email,
         cliente_telefono: clientes.telefono,
         cliente_direccion: clientes.direccion,
-        
+
         // Datos del servicio
         servicio_id: servicios.id,
         servicio_nombre: servicios.nombre,
         servicio_descripcion: servicios.descripcion,
         servicio_tipo: servicios.tipo,
-        
+
         // Datos del plan (si existe)
         plan_id: planes.id,
         plan_nombre: planes.nombre,
@@ -138,3 +139,7 @@ export async function GET(request: NextRequest) {
     return errorResponse("Error al obtener suscripciones: " + (error.message || "Error desconocido"), 500);
   }
 }
+
+export const GET = withAuth(async (request) => getSubscriptionsByBillingDay(request), {
+  requiredPermission: "clientes.suscripciones",
+});

@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { roles } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
+import { withAuth } from "@/lib/api-auth";
 
-export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function patchRole(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const body = await req.json();
@@ -34,7 +35,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   }
 }
 
-export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
+async function deleteRole(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
 
@@ -48,3 +49,6 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const PATCH = withAuth(patchRole, { requiredPermission: "roles:editar" });
+export const DELETE = withAuth(deleteRole, { requiredPermission: "roles:eliminar" });

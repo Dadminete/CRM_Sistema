@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
 import { sql } from "drizzle-orm";
 import { subDays, startOfDay } from "date-fns";
 
 import { db } from "@/lib/db";
 
-export async function GET() {
+async function getCashDiscrepancies() {
   try {
     const discrepancyWindowStart = subDays(startOfDay(new Date()), 60);
 
@@ -44,3 +45,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getCashDiscrepancies(), { requiredPermission: "cajas.dashboard" });

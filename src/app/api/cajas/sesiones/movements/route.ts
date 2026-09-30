@@ -2,8 +2,9 @@ import { db } from "@/lib/db";
 import { movimientosContables, categoriasCuentas, usuarios } from "@/lib/db/schema";
 import { eq, and, gte, lte, desc, ne } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
-export async function GET(req: Request) {
+async function getSessionMovements(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const cajaId = searchParams.get("cajaId");
@@ -52,3 +53,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (req) => getSessionMovements(req), {
+  requiredPermission: "contabilidad.balance_general",
+});

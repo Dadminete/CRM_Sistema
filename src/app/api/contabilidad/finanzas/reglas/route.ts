@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { configuraciones } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 const CONFIG_KEY = "contabilidad.finanzas.reglas";
 
@@ -58,7 +59,7 @@ function normalizeRules(payload?: RulesPayload) {
   };
 }
 
-export async function GET() {
+async function getFinanceRules() {
   try {
     const existing = await db
       .select({ valor: configuraciones.valor })
@@ -80,7 +81,7 @@ export async function GET() {
   }
 }
 
-export async function PUT(req: Request) {
+async function updateFinanceRules(req: Request) {
   try {
     const body = (await req.json()) as RulesPayload;
     const normalized = normalizeRules(body);
@@ -123,3 +124,6 @@ export async function PUT(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async () => getFinanceRules(), { requiredPermission: "contabilidad.dashboard" });
+export const PUT = withAuth(async (req) => updateFinanceRules(req), { requiredPermission: "configuracion_sistema" });

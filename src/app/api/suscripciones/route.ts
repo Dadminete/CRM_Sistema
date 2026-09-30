@@ -113,5 +113,5 @@ export const GET = withAuth(
       return errorResponse(`Error al listar suscripciones activas: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.suscripciones" },
 );

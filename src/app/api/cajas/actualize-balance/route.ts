@@ -2,17 +2,15 @@ import { db } from "@/lib/db";
 import { cajas } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
-export async function POST(req: Request) {
+async function adjustBalance(req: Request) {
   try {
     const body = await req.json();
     const { cajaId, nuevoSaldo } = body;
 
     if (!cajaId || nuevoSaldo === undefined) {
-      return NextResponse.json(
-        { success: false, error: "cajaId y nuevoSaldo requeridos" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "cajaId y nuevoSaldo requeridos" }, { status: 400 });
     }
 
     const caja = await db.query.cajas.findFirst({
@@ -45,9 +43,8 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Error:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(async (req) => adjustBalance(req), { requiredPermission: "cajas.configuracion" });

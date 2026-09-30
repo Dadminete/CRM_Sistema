@@ -12,7 +12,7 @@ vi.mock("@/lib/db/schema", () => ({
   categoriasCuentas: { id: "categoria-id", codigo: "codigo" },
 }));
 
-import { GET } from "../../app/api/contabilidad/dashboard/route";
+import { getAccountingDashboard } from "../../app/api/contabilidad/dashboard/route";
 
 import * as dashboardDataModule from "./dashboard-data";
 import { buildAccountingDashboardMetrics, getAccountingDashboardData } from "./dashboard-data";
@@ -157,7 +157,7 @@ describe("buildAccountingDashboardMetrics", () => {
       new Error("connect ECONNREFUSED"),
     );
 
-    const response = await GET();
+    const response = await getAccountingDashboard();
     const body = await response.json();
 
     expect(response.status).toBe(200);

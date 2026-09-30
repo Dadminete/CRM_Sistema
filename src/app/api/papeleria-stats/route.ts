@@ -2,10 +2,11 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { movimientosContables, cajas, sesionesCaja } from "@/lib/db/schema";
 import { and, gte, lte, sql, eq, desc } from "drizzle-orm";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getPapeleriaStats() {
   try {
     // Obtener el primer y último día del mes actual
     const now = new Date();
@@ -90,7 +91,7 @@ export async function GET() {
     (historyRaw.rows || []).forEach((row: any) => {
       historyMap.set(row.dia, {
         ventas: Number(row.ventas),
-        gastos: Number(row.gastos)
+        gastos: Number(row.gastos),
       });
     });
 
@@ -99,17 +100,18 @@ export async function GET() {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const key = `${d.getDate()}/${d.getMonth() + 1}`;
-      const stat = historyMap.get(key.padStart(5, '0').replace(/^0/, '')) || 
-                 historyMap.get(String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0')) ||
-                 { ventas: 0, gastos: 0 };
-      
+      const stat = historyMap.get(key.padStart(5, "0").replace(/^0/, "")) ||
+        historyMap.get(String(d.getDate()).padStart(2, "0") + "/" + String(d.getMonth() + 1).padStart(2, "0")) || {
+          ventas: 0,
+          gastos: 0,
+        };
+
       ultimosDias.push({
         fecha: key,
         ventas: stat.ventas,
         gastos: stat.gastos,
       });
     }
-
 
     return NextResponse.json({
       success: true,
@@ -126,3 +128,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getPapeleriaStats(), { requiredPermission: "papeleria.dashboard" });

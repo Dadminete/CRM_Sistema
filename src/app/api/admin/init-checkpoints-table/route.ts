@@ -1,11 +1,14 @@
-import { db } from "@/lib/db";
-import { sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
 
-export async function POST(req: Request) {
+import { sql } from "drizzle-orm";
+
+import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
+
+async function handlePost(_req: Request) {
   try {
     console.log("Creating caja_checkpoints table...");
-    
+
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS caja_checkpoints (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -35,13 +38,12 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Tabla caja_checkpoints creada exitosamente"
+      message: "Tabla caja_checkpoints creada exitosamente",
     });
   } catch (error: any) {
     console.error("Error creating table:", error);
-    return NextResponse.json(
-      { success: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(handlePost, { requiredPermission: "database:manage" });

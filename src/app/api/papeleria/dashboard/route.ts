@@ -3,10 +3,11 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: Request) {
+async function getDashboard(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const rawRange = Number(searchParams.get("rangeDays") || 30);
@@ -165,15 +166,17 @@ export async function GET(request: Request) {
             cantidad: Number(r.cantidad || 0),
           })),
         },
-        latestSales: (latestSalesRaw.rows as Array<{
-          id: string;
-          numero_venta: string;
-          fecha_venta: string;
-          cliente_nombre: string;
-          metodo_pago: string;
-          estado: string;
-          neto: string | number;
-        }>).map((r) => ({
+        latestSales: (
+          latestSalesRaw.rows as Array<{
+            id: string;
+            numero_venta: string;
+            fecha_venta: string;
+            cliente_nombre: string;
+            metodo_pago: string;
+            estado: string;
+            neto: string | number;
+          }>
+        ).map((r) => ({
           id: r.id,
           numeroVenta: r.numero_venta,
           fechaVenta: r.fecha_venta,
@@ -189,3 +192,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ success: false, error: "No se pudo cargar el dashboard" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async (request) => getDashboard(request), { requiredPermission: "papeleria.dashboard" });

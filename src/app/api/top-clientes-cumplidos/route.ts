@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
 import { sql } from "drizzle-orm";
 
@@ -15,7 +16,7 @@ type Row = {
   pagos: number;
 };
 
-export async function GET() {
+async function getTopCompliantClients() {
   try {
     // “Clientes cumplidos” = pagos confirmados hechos antes (o en) la fecha de vencimiento de su factura.
     const result = await db.execute<Row>(sql`
@@ -51,3 +52,5 @@ export async function GET() {
     return NextResponse.json({ success: false, error: error?.message ?? "Unknown error" }, { status: 500 });
   }
 }
+
+export const GET = withAuth(async () => getTopCompliantClients(), { requiredPermission: "clientes.listado" });

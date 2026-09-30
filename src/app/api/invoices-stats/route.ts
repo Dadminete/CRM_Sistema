@@ -3,10 +3,11 @@ import { eq, gte, or, sql } from "drizzle-orm";
 
 import { db } from "@/lib/db";
 import { cuentasPorCobrar, facturasClientes, pagosClientes } from "@/lib/db/schema";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+async function getInvoiceStats() {
   try {
     // 1. Obtener saldos usando un JOIN para filtrar por el estado de la FACTURA
     // El estado en facturas_clientes es más preciso ('parcial', 'pago parcial', 'pendiente')
@@ -39,7 +40,12 @@ export async function GET() {
       totalPendiente += monto;
 
       // Mantener totalParcial por separado para el desglose visual (opcional si se usa en la UI)
-      if (estado === "parcial" || estado === "pago parcial" || estado === "adelantado" || estado === "pago adelantado") {
+      if (
+        estado === "parcial" ||
+        estado === "pago parcial" ||
+        estado === "adelantado" ||
+        estado === "pago adelantado"
+      ) {
         totalParcial += monto;
       }
     });
@@ -84,3 +90,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withAuth(async () => getInvoiceStats(), { requiredPermission: "facturas.dashboard" });

@@ -2,8 +2,9 @@ import { db } from "@/lib/db";
 import { movimientosContables, sesionesCaja } from "@/lib/db/schema";
 import { eq, sql } from "drizzle-orm";
 import { NextResponse } from "next/server";
+import { withAuth } from "@/lib/api-auth";
 
-export async function POST(req: Request) {
+async function resolveDiscrepancy(req: Request) {
   try {
     const body = await req.json();
     const { sessionId, monto, tipo, categoriaId, metodo, descripcion, usuarioId } = body;
@@ -53,9 +54,7 @@ export async function POST(req: Request) {
 
       // Update caja balance
       const adjustment = tipo === "ingreso" ? Number(monto) : -Number(monto);
-      await tx.execute(
-        sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${session.cajaId}`
-      );
+      await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${session.cajaId}`);
 
       return movement;
     });
@@ -69,3 +68,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withAuth(async (req) => resolveDiscrepancy(req), {
+  requiredPermission: "contabilidad.ingresos_gastos",
+});

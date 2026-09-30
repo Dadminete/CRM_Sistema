@@ -222,5 +222,5 @@ export const GET = withAuth(
       return errorResponse(`Error al cargar dashboard de clientes: ${getErrorMessage(error)}`, 500);
     }
   },
-  { requiredPermission: "clientes:leer" },
+  { requiredPermission: "clientes.dashboard" },
 );

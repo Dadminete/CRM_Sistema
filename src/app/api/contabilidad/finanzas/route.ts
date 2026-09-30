@@ -4,6 +4,7 @@ import { cacheGet, cacheSet } from "@/lib/api-cache";
 import { db } from "@/lib/db";
 import { categoriasCuentas, configuraciones } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -75,7 +76,7 @@ async function loadPersistedRules() {
   }
 }
 
-export async function GET(req: Request) {
+async function getFinancialOverview(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const days = Math.min(Math.max(Number(searchParams.get("days") ?? 30), 7), 365);
@@ -718,3 +719,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async (req) => getFinancialOverview(req), { requiredPermission: "contabilidad.dashboard" });

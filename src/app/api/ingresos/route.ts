@@ -393,5 +393,5 @@ export const GET = withAuth(
       return CommonErrors.internalError("Error al obtener ingresos");
     }
   },
-  { requiredPermission: "ingresos:leer" },
+  { requiredPermission: "contabilidad.ingresos_gastos" },
 );

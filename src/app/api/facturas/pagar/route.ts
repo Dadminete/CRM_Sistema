@@ -13,7 +13,7 @@ import {
   suscripciones,
 } from "@/lib/db/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
-import { jsonResponse } from '@/lib/serializers';
+import { jsonResponse } from "@/lib/serializers";
 import { withAuth } from "@/lib/api-auth";
 
 export const POST = withAuth(async (req: NextRequest, { user }) => {
@@ -43,10 +43,7 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
     const cxc = await db.select().from(cuentasPorCobrar).where(eq(cuentasPorCobrar.facturaId, facturaId)).limit(1);
 
     if (cxc.length === 0) {
-      return jsonResponse(
-        { success: false, error: "Factura no encontrada en cuentas por cobrar." },
-        { status: 404 },
-      );
+      return jsonResponse({ success: false, error: "Factura no encontrada en cuentas por cobrar." }, { status: 404 });
     }
 
     const balanceActual = Number(cxc[0].montoPendiente);
@@ -72,32 +69,29 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
       return jsonResponse({ success: false, error: "El monto o descuento debe ser mayor a 0." }, { status: 400 });
     }
 
-    if (totalAplicado > balanceActual) {
-      // If adminOverride is requested, verify the user is actually an admin server-side
-      if (adminOverride) {
-        const adminRows = await db
-          .select({ nombreRol: roles.nombreRol })
-          .from(usuariosRoles)
-          .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
-          .where(and(eq(usuariosRoles.usuarioId, usuarioId), eq(usuariosRoles.activo, true)))
-          .limit(1);
+    let puedeSobregirar = false;
+    if (adminOverride) {
+      const adminRows = await db
+        .select({ nombreRol: roles.nombreRol })
+        .from(usuariosRoles)
+        .innerJoin(roles, eq(usuariosRoles.rolId, roles.id))
+        .where(and(eq(usuariosRoles.usuarioId, usuarioId), eq(usuariosRoles.activo, true)))
+        .limit(1);
 
-        const esAdmin =
-          adminRows.length > 0 && adminRows[0].nombreRol.toLowerCase().includes("admin");
-
-        if (!esAdmin) {
-          return jsonResponse(
-            { success: false, error: "No autorizado para aplicar descuento mayor al saldo pendiente." },
-            { status: 403 },
-          );
-        }
-        // Admin verified — allow the override and continue
-      } else {
+      puedeSobregirar = adminRows.some((role) => role.nombreRol.toLowerCase().includes("admin"));
+      if (!puedeSobregirar) {
         return jsonResponse(
-          { success: false, error: "El total aplicado (pago + descuento) no puede ser mayor al balance pendiente." },
-          { status: 400 },
+          { success: false, error: "No autorizado para aplicar descuento mayor al saldo pendiente." },
+          { status: 403 },
         );
       }
+    }
+
+    if (totalAplicado > balanceActual && !puedeSobregirar) {
+      return jsonResponse(
+        { success: false, error: "El total aplicado (pago + descuento) no puede ser mayor al balance pendiente." },
+        { status: 400 },
+      );
     }
 
     // 2. Si el pago es en efectivo y hay monto recibido, validar sesión de caja abierta
@@ -159,8 +153,19 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
 
     // 3. Procesar el pago (Transacción)
     const result = await db.transaction(async (tx) => {
-      const descuentoAplicadoReal = Math.min(descuentoAplicado, balanceActual);
-      const restanteTrasDescuento = Math.max(0, balanceActual - descuentoAplicadoReal);
+      const [lockedCxc] = await tx
+        .select({ montoPendiente: cuentasPorCobrar.montoPendiente })
+        .from(cuentasPorCobrar)
+        .where(eq(cuentasPorCobrar.facturaId, facturaId))
+        .for("update")
+        .limit(1);
+
+      if (!lockedCxc) throw new Error("PAYMENT_BALANCE_CHANGED");
+      const balanceBloqueado = Number(lockedCxc.montoPendiente);
+      if (totalAplicado > balanceBloqueado && !puedeSobregirar) throw new Error("PAYMENT_BALANCE_CHANGED");
+
+      const descuentoAplicadoReal = Math.min(descuentoAplicado, balanceBloqueado);
+      const restanteTrasDescuento = Math.max(0, balanceBloqueado - descuentoAplicadoReal);
       const montoAplicadoReal = Math.min(montoAPagar, restanteTrasDescuento);
       const totalAplicadoReal = montoAplicadoReal + descuentoAplicadoReal;
 
@@ -210,7 +215,7 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
         .returning();
 
       // C. Actualizar cuenta por cobrar
-      const nuevoBalanceCalculado = balanceActual - totalAplicadoReal;
+      const nuevoBalanceCalculado = balanceBloqueado - totalAplicadoReal;
       const nuevoBalance = nuevoBalanceCalculado <= EPSILON ? 0 : nuevoBalanceCalculado;
       const nuevoEstado = nuevoBalance === 0 ? "pagado" : "parcial";
 
@@ -269,9 +274,7 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
 
       // F. Actualizar balance de caja si es efectivo
       if (metodoPago === "efectivo" && cajaId && montoAplicadoReal > 0) {
-        await tx.execute(
-          sql`UPDATE cajas SET saldo_actual = saldo_actual + ${montoAplicadoReal} WHERE id = ${cajaId}`
-        );
+        await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${montoAplicadoReal} WHERE id = ${cajaId}`);
       }
 
       // G. AUTOMATIZACIÓN: Actualizar suscripción si la factura está totalmente pagada
@@ -293,22 +296,22 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
                 and(
                   eq(suscripciones.clienteId, clienteId),
                   eq(suscripciones.servicioId, servicioId),
-                  eq(suscripciones.estado, "activo")
-                )
+                  eq(suscripciones.estado, "activo"),
+                ),
               )
               .limit(1);
 
             if (suscripcion) {
-              const baseDateStr = suscripcion.fechaProximoPago || new Date().toISOString().split('T')[0];
+              const baseDateStr = suscripcion.fechaProximoPago || new Date().toISOString().split("T")[0];
               const baseDate = new Date(baseDateStr);
-              
+
               const diaFacturacion = suscripcion.diaFacturacion || 1;
               const skipMonths = 1 + (Number(mesesAdelantados) || 0);
 
               baseDate.setMonth(baseDate.getMonth() + skipMonths);
               baseDate.setDate(diaFacturacion);
 
-              const nuevaFechaProximoPago = baseDate.toISOString().split('T')[0];
+              const nuevaFechaProximoPago = baseDate.toISOString().split("T")[0];
 
               await tx
                 .update(suscripciones)
@@ -332,6 +335,12 @@ export const POST = withAuth(async (req: NextRequest, { user }) => {
     return jsonResponse({ success: true, data: result });
   } catch (error: any) {
     console.error("Error processing payment:", error);
+    if (error instanceof Error && error.message === "PAYMENT_BALANCE_CHANGED") {
+      return jsonResponse(
+        { success: false, error: "El saldo cambió durante el pago. Actualiza la factura e inténtalo de nuevo." },
+        { status: 409 },
+      );
+    }
     return jsonResponse({ success: false, error: error.message }, { status: 500 });
   }
 });

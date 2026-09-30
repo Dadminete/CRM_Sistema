@@ -8,6 +8,7 @@ import {
 import { db } from "@/lib/db";
 import { cuentasPorPagar, pagosCuentasPorPagar, proveedores } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
+import { withAuth } from "@/lib/api-auth";
 
 const CACHE_KEY = "cuentas-por-pagar";
 const CACHE_TTL = 60_000; // 60 segundos
@@ -40,7 +41,7 @@ function calcDiasVencido(fechaVencimiento: string, montoPendiente: number) {
   return Math.max(0, diff);
 }
 
-export async function GET() {
+async function getAccountsPayable() {
   try {
     const cached = cacheGet<object>(CACHE_KEY);
     if (cached) return jsonResponse(cached);
@@ -232,7 +233,7 @@ export async function GET() {
   }
 }
 
-export async function POST(req: Request) {
+async function createAccountPayable(req: Request) {
   try {
     const body = await req.json();
     const {
@@ -291,7 +292,7 @@ export async function POST(req: Request) {
   }
 }
 
-export async function PUT(req: Request) {
+async function updateAccountPayable(req: Request) {
   try {
     const body = await req.json();
     const id = String(body?.id ?? "");
@@ -362,7 +363,7 @@ export async function PUT(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+async function deleteAccountPayable(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
@@ -381,3 +382,8 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+export const GET = withAuth(async () => getAccountsPayable(), { requiredPermission: "contabilidad.balance_general" });
+export const POST = withAuth(async (req) => createAccountPayable(req), { requiredPermission: "contabilidad.cxp" });
+export const PUT = withAuth(async (req) => updateAccountPayable(req), { requiredPermission: "contabilidad.cxp" });
+export const DELETE = withAuth(async (req) => deleteAccountPayable(req), { requiredPermission: "contabilidad.cxp" });
