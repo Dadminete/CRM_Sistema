@@ -11,7 +11,7 @@ import {
   cajas,
   cuentasBancarias,
 } from "@/lib/db/schema";
-import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
 import { jsonResponse } from "@/lib/serializers";
 import { withAuth } from "@/lib/api-auth";
 import { z } from "zod";
