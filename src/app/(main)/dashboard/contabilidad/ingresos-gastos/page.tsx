@@ -270,6 +270,7 @@ function IngresosGastosPageContent() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Fetching updates loading and result state.
     fetchMovimientos(activeTab, 1);
     fetchLookup(activeTab);
     if (activeTab === "gasto") {
@@ -514,6 +515,7 @@ function IngresosGastosPageContent() {
 
   useEffect(() => {
     if (filterCategoriaId && !lookup.categorias.some((item) => item.id === filterCategoriaId)) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Clear selections invalidated by refreshed lookup data.
       setFilterCategoriaId("");
     }
 
