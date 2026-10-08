@@ -1,5 +1,6 @@
 import { and, count, desc, eq, gte, ilike, lte, ne, or, sql } from "drizzle-orm";
 
+import { withAuth } from "@/lib/api-auth";
 import { isTransferMovementRecord } from "@/lib/contabilidad/transfer-utils";
 import { db } from "@/lib/db";
 import {
@@ -13,7 +14,6 @@ import {
   pagosCuentasPorPagar,
 } from "@/lib/db/schema";
 import { jsonResponse } from "@/lib/serializers";
-import { withAuth } from "@/lib/api-auth";
 
 function calcDiasVencido(fechaVencimiento: string, montoPendiente: number) {
   if (montoPendiente <= 0) return 0;
@@ -96,6 +96,21 @@ async function applyCuentaPorPagarPayment(
 
 function isBankMovement(metodo: string | null | undefined, cuentaBancariaId: string | null | undefined) {
   return metodo !== "efectivo" && !!cuentaBancariaId;
+}
+
+function parseAmountToCents(value: unknown) {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const normalized = String(value).trim();
+  const parts = normalized.split(".");
+  if (parts.length > 2) return null;
+  const units = parts[0];
+  const decimals = parts[1] ?? "";
+  const isDigits = (part: string) =>
+    part.length > 0 && [...part].every((character) => character >= "0" && character <= "9");
+  if (!isDigits(units) || decimals.length > 2 || (parts.length === 2 && !isDigits(decimals))) {
+    return null;
+  }
+  return Number(units) * 100 + Number(decimals.padEnd(2, "0"));
 }
 
 async function revertCuentaPorPagarPaymentByMovement(tx: any, movementId: string) {
@@ -309,14 +324,96 @@ async function createMovement(req: Request) {
         { status: 400 },
       );
     }
-    const result = await db.transaction(async (tx) => {
-      // 1. Insert Movement
-      const [newMovimiento] = await tx
-        .insert(movimientosContables)
-        .values({
-          tipo,
-          monto: String(monto),
-          categoriaId,
+
+    const totalCents = parseAmountToCents(monto);
+    if (totalCents === null || totalCents <= 0) {
+      return jsonResponse(
+        { success: false, error: "El monto debe ser mayor que cero y tener máximo dos decimales" },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    type MovementPayment = {
+      montoCents: number;
+      metodo: string;
+      cajaId: string | null;
+      bankId: string | null;
+      cuentaBancariaId: string | null;
+    };
+
+    let payments: MovementPayment[];
+    if (body.pagos !== undefined) {
+      if (tipo !== "gasto" || metodo !== "mixto" || !Array.isArray(body.pagos) || body.pagos.length !== 2) {
+        return jsonResponse(
+          { success: false, error: "El pago mixto requiere efectivo y transferencia en un gasto" },
+          {
+            status: 400,
+          },
+        );
+      }
+
+      payments = [];
+      for (const payment of body.pagos) {
+        if (!payment || typeof payment !== "object" || !["efectivo", "transferencia"].includes(payment.metodo)) {
+          return jsonResponse({ success: false, error: "Los métodos del pago mixto no son válidos" }, { status: 400 });
+        }
+
+        const amountCents = parseAmountToCents(payment.monto);
+        if (amountCents === null || amountCents <= 0) {
+          return jsonResponse(
+            { success: false, error: "Cada parte del pago mixto debe ser mayor que cero" },
+            {
+              status: 400,
+            },
+          );
+        }
+
+        const paymentCajaId = typeof payment.cajaId === "string" ? payment.cajaId : null;
+        const paymentBankId = typeof payment.bankId === "string" ? payment.bankId : null;
+        const paymentCuentaBancariaId = typeof payment.cuentaBancariaId === "string" ? payment.cuentaBancariaId : null;
+
+        if (payment.metodo === "efectivo" && !paymentCajaId) {
+          return jsonResponse({ success: false, error: "Selecciona la caja del pago en efectivo" }, { status: 400 });
+        }
+        if (payment.metodo === "transferencia" && (!paymentBankId || !paymentCuentaBancariaId)) {
+          return jsonResponse(
+            { success: false, error: "Selecciona el banco y la cuenta de la transferencia" },
+            { status: 400 },
+          );
+        }
+
+        payments.push({
+          montoCents: amountCents,
+          metodo: payment.metodo,
+          cajaId: paymentCajaId,
+          bankId: paymentBankId,
+          cuentaBancariaId: paymentCuentaBancariaId,
+        });
+      }
+
+      if (
+        new Set(payments.map((payment) => payment.metodo)).size !== 2 ||
+        payments.reduce((sum, payment) => sum + payment.montoCents, 0) !== totalCents
+      ) {
+        return jsonResponse(
+          { success: false, error: "El pago mixto debe incluir efectivo y transferencia y sumar el monto total" },
+          { status: 400 },
+        );
+      }
+    } else {
+      if (metodo === "mixto") {
+        return jsonResponse(
+          { success: false, error: "Debes indicar el detalle de cada parte del pago mixto" },
+          {
+            status: 400,
+          },
+        );
+      }
+      payments = [
+        {
+          montoCents: totalCents,
           metodo,
           // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
           cajaId: cajaId || null,
@@ -324,67 +421,86 @@ async function createMovement(req: Request) {
           bankId: bankId || null,
           // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
           cuentaBancariaId: cuentaBancariaId || null,
-          // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-          descripcion: descripcion || null,
-          // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-          fecha: fecha || new Date().toISOString(),
-          usuarioId,
-          cuentaPorPagarId: normalizedCuentaPorPagarId,
-          updatedAt: new Date().toISOString(),
-        })
-        .returning();
+        },
+      ];
+    }
 
-      // 2. Update Balance if it's a cash movement (caja)
-      if (metodo === "efectivo" && cajaId) {
-        const adjustment = tipo === "ingreso" ? Number(monto) : -Number(monto);
-        await tx.execute(sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${cajaId}`);
-      } else if (isBankMovement(metodo, cuentaBancariaId)) {
-        // If it's a bank movement, we update the associated accounting account
-        const account = await tx
-          .select({ id: cuentasBancarias.cuentaContableId })
-          .from(cuentasBancarias)
-          .where(eq(cuentasBancarias.id, cuentaBancariaId))
-          .limit(1);
+    const result = await db.transaction(async (tx) => {
+      const createdMovements = [];
+      for (const payment of payments) {
+        const paymentAmount = (payment.montoCents / 100).toFixed(2);
+        const [newMovimiento] = await tx
+          .insert(movimientosContables)
+          .values({
+            tipo,
+            monto: paymentAmount,
+            categoriaId,
+            metodo: payment.metodo,
+            cajaId: payment.cajaId,
+            bankId: payment.bankId,
+            cuentaBancariaId: payment.cuentaBancariaId,
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+            descripcion: descripcion || null,
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+            fecha: fecha || new Date().toISOString(),
+            usuarioId,
+            cuentaPorPagarId: normalizedCuentaPorPagarId,
+            updatedAt: new Date().toISOString(),
+          })
+          .returning();
+        createdMovements.push(newMovimiento);
 
-        if (account.length > 0 && account[0].id) {
-          const adjustment = tipo === "ingreso" ? Number(monto) : -Number(monto);
+        if (payment.metodo === "efectivo" && payment.cajaId) {
+          const adjustment = tipo === "ingreso" ? payment.montoCents / 100 : -payment.montoCents / 100;
           await tx.execute(
-            sql`UPDATE cuentas_contables SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${account[0].id}`,
+            sql`UPDATE cajas SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${payment.cajaId}`,
           );
+        } else if (payment.metodo !== "efectivo" && payment.cuentaBancariaId) {
+          const account = await tx
+            .select({ id: cuentasBancarias.cuentaContableId })
+            .from(cuentasBancarias)
+            .where(eq(cuentasBancarias.id, payment.cuentaBancariaId))
+            .limit(1);
+
+          if (account.length > 0 && account[0].id) {
+            const adjustment = tipo === "ingreso" ? payment.montoCents / 100 : -payment.montoCents / 100;
+            await tx.execute(
+              sql`UPDATE cuentas_contables SET saldo_actual = saldo_actual + ${adjustment} WHERE id = ${account[0].id}`,
+            );
+          }
+        }
+
+        if (tipo === "gasto" && normalizedPagoFijoId) {
+          const fechaPago = (fecha ? String(fecha) : new Date().toISOString()).split("T")[0];
+
+          await tx.insert(pagosPagosFijos).values({
+            pagoFijoId: normalizedPagoFijoId,
+            fechaPago,
+            montoPagado: paymentAmount,
+            metodoPago: payment.metodo,
+            numeroReferencia: null,
+            observaciones: `[MOV:${newMovimiento.id}] Pago desde /contabilidad/ingresos-gastos`,
+            // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
+            pagadoPor: usuarioId || null,
+          });
+        }
+
+        if (tipo === "gasto" && normalizedCuentaPorPagarId) {
+          await applyCuentaPorPagarPayment(tx, {
+            cuentaPorPagarId: normalizedCuentaPorPagarId,
+            monto: payment.montoCents / 100,
+            fecha,
+            metodo: payment.metodo,
+            usuarioId,
+            movementId: newMovimiento.id,
+          });
         }
       }
 
-      // 3. Save fixed-expense payment history when gasto is linked to a fixed expense.
-      if (tipo === "gasto" && normalizedPagoFijoId) {
-        const fechaPago = (fecha ? String(fecha) : new Date().toISOString()).split("T")[0];
-
-        await tx.insert(pagosPagosFijos).values({
-          pagoFijoId: normalizedPagoFijoId,
-          fechaPago,
-          montoPagado: String(monto),
-          metodoPago: metodo,
-          numeroReferencia: null,
-          observaciones: `[MOV:${newMovimiento.id}] Pago desde /contabilidad/ingresos-gastos`,
-          // eslint-disable-next-line @typescript-eslint/prefer-nullish-coalescing
-          pagadoPor: usuarioId || null,
-        });
-      }
-
-      if (tipo === "gasto" && normalizedCuentaPorPagarId) {
-        await applyCuentaPorPagarPayment(tx, {
-          cuentaPorPagarId: normalizedCuentaPorPagarId,
-          monto: Number(monto),
-          fecha,
-          metodo,
-          usuarioId,
-          movementId: newMovimiento.id,
-        });
-      }
-
-      return newMovimiento;
+      return createdMovements;
     });
 
-    return jsonResponse({ success: true, data: result });
+    return jsonResponse({ success: true, data: result.length === 1 ? result[0] : result });
   } catch (error: unknown) {
     console.error("Error creating movimiento:", error);
     return jsonResponse(

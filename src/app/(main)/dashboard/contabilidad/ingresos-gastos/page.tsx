@@ -107,6 +107,8 @@ const EMPTY_FORM = {
   fecha: new Date().toISOString().split("T")[0],
   cuentaPorPagarId: "",
   pagoFijoId: "",
+  montoEfectivo: "",
+  montoTransferencia: "",
 };
 
 const PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
@@ -114,6 +116,11 @@ const PAGE_SIZE_OPTIONS = [10, 30, 50, 100] as const;
 // ─── Helpers ───
 const formatCurrency = (v: string | number) =>
   new Intl.NumberFormat("es-DO", { style: "currency", currency: "DOP" }).format(Number(v));
+
+const toCents = (value: string) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? Math.round(amount * 100) : 0;
+};
 
 const formatDate = (v: string) =>
   new Date(v).toLocaleDateString("es-DO", { year: "numeric", month: "short", day: "numeric" });
@@ -346,6 +353,8 @@ function IngresosGastosPageContent() {
       fecha: m.fecha ? m.fecha.split("T")[0] : "",
       cuentaPorPagarId: m.cuentaPorPagarId ?? "",
       pagoFijoId: "",
+      montoEfectivo: "",
+      montoTransferencia: "",
     });
     setIsDialogOpen(true);
   };
@@ -361,25 +370,42 @@ function IngresosGastosPageContent() {
       return;
     }
 
-    if (form.metodo === "efectivo" && !form.cajaId) {
+    const mixedPayment = isGasto && form.metodo === "mixto";
+    const montoEfectivo = mixedPayment ? toCents(form.montoEfectivo) : 0;
+    const montoTransferencia = mixedPayment ? toCents(form.montoTransferencia) : 0;
+
+    if (mixedPayment && (montoEfectivo <= 0 || montoTransferencia <= 0)) {
+      toast.error("Para un pago mixto, los importes en efectivo y transferencia deben ser mayores que cero");
+      return;
+    }
+
+    if (mixedPayment && montoEfectivo + montoTransferencia !== toCents(form.monto)) {
+      toast.error("La suma de efectivo y transferencia debe coincidir con el monto total del gasto");
+      return;
+    }
+
+    const requiereEfectivo = form.metodo === "efectivo" || (mixedPayment && montoEfectivo > 0);
+    const requiereTransferencia = form.metodo !== "efectivo" && (!mixedPayment || montoTransferencia > 0);
+
+    if (requiereEfectivo && !form.cajaId) {
       toast.error("Debes seleccionar una caja para pagos en efectivo");
       return;
     }
 
-    if (form.metodo !== "efectivo" && (!form.bankId || !form.cuentaBancariaId)) {
+    if (requiereTransferencia && (!form.bankId || !form.cuentaBancariaId)) {
       toast.error("Debes seleccionar banco y cuenta bancaria para movimientos no efectivos");
       return;
     }
 
     // Doble validación de Sesión de Caja para pagos en efectivo
-    let currentSession = activeSession;
-    if (form.metodo === "efectivo" && !currentSession) {
+    let currentSession = activeSession?.cajaId === form.cajaId ? activeSession : null;
+    if (requiereEfectivo && !currentSession) {
       // Re-verificar sesión por si acaso o si se abrió en otra pestaña
       try {
         const url = form.cajaId ? `/api/cajas/sesiones?cajaId=${form.cajaId}` : "/api/cajas/sesiones";
         const res = await fetch(url);
         const data = await res.json();
-        if (data.success && data.activeSession) {
+        if (data.success && data.activeSession?.cajaId === form.cajaId) {
           currentSession = data.activeSession;
           setActiveSession(data.activeSession);
         }
@@ -388,7 +414,7 @@ function IngresosGastosPageContent() {
       }
     }
 
-    if (form.metodo === "efectivo" && !currentSession) {
+    if (requiereEfectivo && !currentSession) {
       toast.error("Caja Cerrada: Debe abrir una sesión de caja para registrar movimientos en efectivo.");
       return;
     }
@@ -415,6 +441,18 @@ function IngresosGastosPageContent() {
         tipo: activeTab,
         usuarioId: usuarioId || undefined,
       };
+
+      if (mixedPayment) {
+        body.pagos = [
+          { metodo: "efectivo", monto: (montoEfectivo / 100).toFixed(2), cajaId: form.cajaId },
+          {
+            metodo: "transferencia",
+            monto: (montoTransferencia / 100).toFixed(2),
+            bankId: form.bankId,
+            cuentaBancariaId: form.cuentaBancariaId,
+          },
+        ];
+      }
 
       if (editingId) body.id = editingId;
 
@@ -463,7 +501,7 @@ function IngresosGastosPageContent() {
         if (value === "efectivo") {
           next.bankId = "";
           next.cuentaBancariaId = "";
-        } else {
+        } else if (value !== "mixto") {
           next.cajaId = "";
         }
       }
@@ -820,14 +858,60 @@ function IngresosGastosPageContent() {
                       {m.label}
                     </SelectItem>
                   ))}
+                  {isGasto && <SelectItem value="mixto">Mixto (efectivo + transferencia)</SelectItem>}
                 </SelectContent>
               </Select>
             </div>
 
+            {isGasto && form.metodo === "mixto" && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="montoEfectivo"
+                    className="text-muted-foreground text-xs font-bold tracking-widest uppercase"
+                  >
+                    Parte en efectivo *
+                  </Label>
+                  <Input
+                    id="montoEfectivo"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={form.montoEfectivo}
+                    onChange={(e) => updateForm("montoEfectivo", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label
+                    htmlFor="montoTransferencia"
+                    className="text-muted-foreground text-xs font-bold tracking-widest uppercase"
+                  >
+                    Parte por transferencia *
+                  </Label>
+                  <Input
+                    id="montoTransferencia"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={form.montoTransferencia}
+                    onChange={(e) => updateForm("montoTransferencia", e.target.value)}
+                  />
+                </div>
+                <p className="text-muted-foreground col-span-2 text-xs">
+                  Distribuido: {formatCurrency((toCents(form.montoEfectivo) + toCents(form.montoTransferencia)) / 100)}
+                  {" · "}Total: {formatCurrency(form.monto || 0)}
+                </p>
+              </div>
+            )}
+
             {/* Caja (si es efectivo) */}
-            {form.metodo === "efectivo" && (
+            {(form.metodo === "efectivo" || (isGasto && form.metodo === "mixto")) && (
               <div className="animate-in fade-in slide-in-from-top-2 space-y-2 duration-200">
-                <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">Caja</Label>
+                <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
+                  {form.metodo === "mixto" ? "Caja para el efectivo" : "Caja"}
+                </Label>
                 <Select value={form.cajaId} onValueChange={(v) => updateForm("cajaId", v)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Seleccionar caja" />
@@ -844,7 +928,44 @@ function IngresosGastosPageContent() {
             )}
 
             {/* Banco + Cuenta Bancaria (si NO es efectivo) */}
-            {form.metodo && form.metodo !== "efectivo" && (
+            {form.metodo && form.metodo !== "efectivo" && form.metodo !== "mixto" && (
+              <div className="animate-in fade-in slide-in-from-top-2 grid grid-cols-2 gap-4 duration-200">
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">Banco</Label>
+                  <Select value={form.bankId} onValueChange={(v) => updateForm("bankId", v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar banco" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lookup.bancos.map((b) => (
+                        <SelectItem key={b.id} value={b.id}>
+                          {b.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">
+                    Cuenta Bancaria
+                  </Label>
+                  <Select value={form.cuentaBancariaId} onValueChange={(v) => updateForm("cuentaBancariaId", v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Seleccionar cuenta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cuentasBancariasFiltradas.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.numeroCuenta} {c.bankNombre ? `(${c.bankNombre})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+
+            {isGasto && form.metodo === "mixto" && (
               <div className="animate-in fade-in slide-in-from-top-2 grid grid-cols-2 gap-4 duration-200">
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-xs font-bold tracking-widest uppercase">Banco</Label>
