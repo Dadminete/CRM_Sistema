@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+
+import { and, eq, inArray, isNull, or, sql, ne } from "drizzle-orm";
+
 import { withAuth } from "@/lib/api-auth";
-
-import { and, eq, gte, inArray, isNull, lte, or, sql, ne } from "drizzle-orm";
-
 import { db } from "@/lib/db";
 import { cajas, movimientosContables, categoriasCuentas } from "@/lib/db/schema";
 
@@ -25,21 +25,28 @@ const MONTH_NAMES = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Se
 
 type MonthRange = {
   label: string;
-  start: Date;
-  end: Date;
+  start: string;
+  end: string;
 };
 
 function buildLastMonthRanges(count = 3): MonthRange[] {
-  const now = new Date();
+  const currentParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Santo_Domingo",
+    year: "numeric",
+    month: "numeric",
+  }).formatToParts(new Date());
+  const year = Number(currentParts.find((part) => part.type === "year")?.value);
+  const month = Number(currentParts.find((part) => part.type === "month")?.value);
 
   return Array.from({ length: count }, (_, index) => {
     const offset = count - index - 1;
-    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const date = new Date(Date.UTC(year, month - 1 - offset, 1));
+    const nextMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
 
     return {
-      label: MONTH_NAMES[date.getMonth()],
-      start: new Date(date.getFullYear(), date.getMonth(), 1),
-      end: new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59),
+      label: MONTH_NAMES[date.getUTCMonth()],
+      start: date.toISOString().slice(0, 10),
+      end: nextMonth.toISOString().slice(0, 10),
     };
   });
 }
@@ -70,10 +77,15 @@ async function getTraspasoCatId(): Promise<string | null> {
 async function getTotalsByType(
   cajaIds: string[],
   tipo: "ingreso" | "gasto",
-  start: Date,
-  end: Date,
+  start: string,
+  end: string,
   traspasoCatId: string | null,
 ): Promise<number> {
+  const typeCondition =
+    tipo === "ingreso"
+      ? sql`LOWER(${movimientosContables.tipo}) = 'ingreso'`
+      : sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`;
+
   // Only caja movements — exclude any row that also has a cuentaBancariaId to avoid
   // double-counting with the unified total query.
   const result = await db
@@ -82,19 +94,19 @@ async function getTotalsByType(
     .where(
       traspasoCatId
         ? and(
-            eq(movimientosContables.tipo, tipo),
+            typeCondition,
             ne(movimientosContables.categoriaId, traspasoCatId),
             inArray(movimientosContables.cajaId, cajaIds),
             isNull(movimientosContables.cuentaBancariaId),
-            gte(movimientosContables.fecha, start.toISOString()),
-            lte(movimientosContables.fecha, end.toISOString()),
+            sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
           )
         : and(
-            eq(movimientosContables.tipo, tipo),
+            typeCondition,
             inArray(movimientosContables.cajaId, cajaIds),
             isNull(movimientosContables.cuentaBancariaId),
-            gte(movimientosContables.fecha, start.toISOString()),
-            lte(movimientosContables.fecha, end.toISOString()),
+            sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
           ),
     );
 
@@ -105,8 +117,8 @@ async function getTotalsByType(
 // Excludes traspasos (internal transfers) from both sources.
 async function getTotalIngresosUnificado(
   cajaIds: string[],
-  start: Date,
-  end: Date,
+  start: string,
+  end: string,
   traspasoCatId: string | null,
 ): Promise<number> {
   const result = await db
@@ -114,11 +126,11 @@ async function getTotalIngresosUnificado(
     .from(movimientosContables)
     .where(
       and(
-        eq(movimientosContables.tipo, "ingreso"),
+        sql`LOWER(${movimientosContables.tipo}) = 'ingreso'`,
         traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
         or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
-        gte(movimientosContables.fecha, start.toISOString()),
-        lte(movimientosContables.fecha, end.toISOString()),
+        sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
       ),
     );
   return Number(result[0]?.total ?? 0);
@@ -126,8 +138,8 @@ async function getTotalIngresosUnificado(
 
 async function getTotalGastosUnificado(
   cajaIds: string[],
-  start: Date,
-  end: Date,
+  start: string,
+  end: string,
   traspasoCatId: string | null,
 ): Promise<number> {
   const result = await db
@@ -135,11 +147,11 @@ async function getTotalGastosUnificado(
     .from(movimientosContables)
     .where(
       and(
-        eq(movimientosContables.tipo, "gasto"),
+        sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`,
         traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
         or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
-        gte(movimientosContables.fecha, start.toISOString()),
-        lte(movimientosContables.fecha, end.toISOString()),
+        sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
       ),
     );
   return Number(result[0]?.total ?? 0);

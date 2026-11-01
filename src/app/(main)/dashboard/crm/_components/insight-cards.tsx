@@ -2,11 +2,18 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { XAxis, Label, Pie, PieChart, Bar, BarChart, CartesianGrid, LabelList, YAxis } from "recharts";
+import { XAxis, Label, Pie, PieChart, CartesianGrid, YAxis, Line, LineChart } from "recharts";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from "@/components/ui/chart";
+import {
+  ChartConfig,
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  ChartLegend,
+  ChartLegendContent,
+} from "@/components/ui/chart";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -38,27 +45,12 @@ type TopClientesCumplidosDetalleResponse = {
 
 const ingresosGastosChartConfig = {
   ingresos: {
-    label: "Ingresos Cajas",
+    label: "Ingresos totales",
     color: "var(--chart-5)",
   },
-  totalIngresos: {
-    label: "Ingresos Totales",
-    color: "var(--chart-1)",
-  },
-  gastosCajas: {
-    label: "Gastos Cajas",
+  gastos: {
+    label: "Gastos totales",
     color: "var(--chart-2)",
-  },
-  gastosBancos: {
-    label: "Gastos Bancos",
-    color: "var(--chart-4)",
-  },
-  totalGastos: {
-    label: "Total Gastos",
-    color: "var(--chart-3)",
-  },
-  label: {
-    color: "var(--primary-foreground)",
   },
 } as ChartConfig;
 
@@ -79,7 +71,7 @@ export function InsightCards() {
   >([]);
 
   const [ingresosGastosData, setIngresosGastosData] = useState<
-    Array<{ name: string; ingresos: number; gastos: number; totalIngresos: number; totalGastos: number }>
+    Array<{ name: string; ingresos: number; gastos: number }>
   >([]);
 
   useEffect(() => {
@@ -94,10 +86,8 @@ export function InsightCards() {
           setIngresosGastosData(
             json.data.ultimosMeses.map((row) => ({
               name: row.mes,
-              ingresos: Number(row.ingresos || 0),
-              gastos: Number(row.gastos || 0),
-              totalIngresos: Number(row.totalIngresos || 0),
-              totalGastos: Number(row.totalGastos || 0),
+              ingresos: Number(row.totalIngresos || 0),
+              gastos: Number(row.totalGastos || 0),
             })),
           );
         }
@@ -195,21 +185,6 @@ export function InsightCards() {
         maximumFractionDigits: 0,
       }),
     [],
-  );
-
-  const ingresosGastosChartData = useMemo(
-    () =>
-      ingresosGastosData.map((row) => {
-        const gastosCajas = Number(row.gastos || 0);
-        const gastosBancos = Math.max(Number(row.totalGastos || 0) - gastosCajas, 0);
-
-        return {
-          ...row,
-          gastosCajas,
-          gastosBancos,
-        };
-      }),
-    [ingresosGastosData],
   );
 
   return (
@@ -348,14 +323,14 @@ export function InsightCards() {
         </CardHeader>
         <CardContent className="size-full max-h-72">
           <ChartContainer config={ingresosGastosChartConfig} className="size-full min-h-56">
-            <BarChart accessibilityLayer data={ingresosGastosChartData} margin={{ top: 20, right: 12, left: 0, bottom: 0 }}>
+            <LineChart accessibilityLayer data={ingresosGastosData} margin={{ top: 20, right: 12, left: 0, bottom: 0 }}>
               <CartesianGrid vertical={false} />
               <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} />
               <YAxis
                 tickLine={false}
                 axisLine={false}
                 tickMargin={8}
-                tickFormatter={(value) => formatMoneda.format(Number(value || 0))}
+                tickFormatter={(value) => formatMoneda.format(Number(value ?? 0))}
               />
               <ChartTooltip
                 cursor={false}
@@ -364,31 +339,25 @@ export function InsightCards() {
                     indicator="dot"
                     formatter={(value, name) => (
                       <div className="flex w-full items-center justify-between gap-3">
-                        <span className="text-muted-foreground">{ingresosGastosChartConfig[String(name)]?.label || name}</span>
-                        <span className="font-medium tabular-nums">{formatMoneda.format(Number(value || 0))}</span>
+                        <span className="text-muted-foreground">
+                          {ingresosGastosChartConfig[String(name)]?.label ?? name}
+                        </span>
+                        <span className="font-medium tabular-nums">{formatMoneda.format(Number(value ?? 0))}</span>
                       </div>
                     )}
                   />
                 }
               />
-              <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="totalIngresos" fill="var(--color-totalIngresos)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="gastosCajas" stackId="gastos" fill="var(--color-gastosCajas)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="gastosBancos" stackId="gastos" fill="var(--color-gastosBancos)" radius={[4, 4, 0, 0]}>
-                <LabelList
-                  dataKey="totalGastos"
-                  position="top"
-                  offset={8}
-                  className="fill-foreground text-[10px] tabular-nums"
-                  formatter={(value: number) => formatMoneda.format(Number(value || 0))}
-                />
-              </Bar>
+              <Line dataKey="ingresos" type="monotone" stroke="var(--color-ingresos)" strokeWidth={2} dot={{ r: 4 }} />
+              <Line dataKey="gastos" type="monotone" stroke="var(--color-gastos)" strokeWidth={2} dot={{ r: 4 }} />
               <ChartLegend content={<ChartLegendContent />} />
-            </BarChart>
+            </LineChart>
           </ChartContainer>
         </CardContent>
         <CardFooter>
-          <p className="text-muted-foreground text-xs">Gastos apilados por origen (cajas y bancos). Etiqueta superior = total de gastos mensual.</p>
+          <p className="text-muted-foreground text-xs">
+            Comparación mensual de ingresos y gastos totales de cajas y bancos.
+          </p>
         </CardFooter>
       </Card>
     </div>
