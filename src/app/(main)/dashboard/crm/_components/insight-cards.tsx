@@ -23,7 +23,13 @@ type CajaStatsResponse = {
   success: boolean;
   data?: {
     saldoTotal: number;
-    ultimosMeses: Array<{ mes: string; ingresos: number; gastos: number; totalIngresos: number; totalGastos: number }>;
+    ultimosMeses: Array<{
+      mes: string;
+      ingresosCaja: number;
+      ingresosBanco: number;
+      gastosCaja: number;
+      gastosBanco: number;
+    }>;
   };
 };
 
@@ -44,13 +50,21 @@ type TopClientesCumplidosDetalleResponse = {
 };
 
 const ingresosGastosChartConfig = {
-  ingresos: {
-    label: "Ingresos totales",
+  ingresosCaja: {
+    label: "Ingresos por caja",
     color: "var(--chart-1)",
   },
-  gastos: {
-    label: "Gastos totales",
+  ingresosBanco: {
+    label: "Ingresos por banco",
+    color: "var(--chart-3)",
+  },
+  gastosCaja: {
+    label: "Gastos por caja",
     color: "var(--chart-2)",
+  },
+  gastosBanco: {
+    label: "Gastos por banco",
+    color: "var(--chart-4)",
   },
 } as ChartConfig;
 
@@ -71,7 +85,13 @@ export function InsightCards() {
   >([]);
 
   const [ingresosGastosData, setIngresosGastosData] = useState<
-    Array<{ name: string; ingresos: number; gastos: number }>
+    Array<{
+      name: string;
+      ingresosCaja: number;
+      ingresosBanco: number;
+      gastosCaja: number;
+      gastosBanco: number;
+    }>
   >([]);
 
   useEffect(() => {
@@ -86,8 +106,10 @@ export function InsightCards() {
           setIngresosGastosData(
             json.data.ultimosMeses.map((row) => ({
               name: row.mes,
-              ingresos: Number(row.totalIngresos || 0),
-              gastos: Number(row.totalGastos || 0),
+              ingresosCaja: Number(row.ingresosCaja || 0),
+              ingresosBanco: Number(row.ingresosBanco || 0),
+              gastosCaja: Number(row.gastosCaja || 0),
+              gastosBanco: Number(row.gastosBanco || 0),
             })),
           );
         }
@@ -354,29 +376,18 @@ export function InsightCards() {
                   />
                 }
               />
-              <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="gastos" fill="var(--color-gastos)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="ingresosCaja" fill="var(--color-ingresosCaja)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="ingresosBanco" fill="var(--color-ingresosBanco)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="gastosCaja" fill="var(--color-gastosCaja)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="gastosBanco" fill="var(--color-gastosBanco)" radius={[4, 4, 0, 0]} />
               <ChartLegend content={<ChartLegendContent />} />
             </BarChart>
           </ChartContainer>
         </CardContent>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 text-right text-xs tabular-nums">
-            <span className="text-muted-foreground text-left font-semibold">Mes</span>
-            <span className="text-muted-foreground font-semibold">Ingresos</span>
-            <span className="text-muted-foreground font-semibold">Gastos</span>
-            {ingresosGastosData.map((row) => (
-              <div key={row.name} className="contents">
-                <span className="text-left">{row.name}</span>
-                <span>{formatMoneda.format(row.ingresos)}</span>
-                <span>{formatMoneda.format(row.gastos)}</span>
-              </div>
-            ))}
-          </div>
-        </CardContent>
         <CardFooter>
           <p className="text-muted-foreground text-xs">
-            Totales mensuales consolidados de cajas y bancos. Los traspasos internos no se cuentan.
+            Distribución mensual por origen. Los traspasos internos no se cuentan; pasa sobre las barras para ver los
+            montos.
           </p>
         </CardFooter>
       </Card>

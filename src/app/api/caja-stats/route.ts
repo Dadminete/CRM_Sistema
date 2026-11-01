@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { and, eq, inArray, isNull, or, sql, ne } from "drizzle-orm";
+import { and, eq, inArray, or, sql } from "drizzle-orm";
 
 import { withAuth } from "@/lib/api-auth";
 import { db } from "@/lib/db";
@@ -74,111 +74,68 @@ async function getTraspasoCatId(): Promise<string | null> {
   return traspasoCat[0]?.id ?? null;
 }
 
-async function getTotalsByType(
-  cajaIds: string[],
-  tipo: "ingreso" | "gasto",
-  start: string,
-  end: string,
-  traspasoCatId: string | null,
-): Promise<number> {
-  const typeCondition =
-    tipo === "ingreso"
-      ? sql`LOWER(${movimientosContables.tipo}) = 'ingreso'`
-      : sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`;
-
-  // Only caja movements — exclude any row that also has a cuentaBancariaId to avoid
-  // double-counting with the unified total query.
-  const result = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
-    .from(movimientosContables)
-    .where(
-      traspasoCatId
-        ? and(
-            typeCondition,
-            ne(movimientosContables.categoriaId, traspasoCatId),
-            inArray(movimientosContables.cajaId, cajaIds),
-            isNull(movimientosContables.cuentaBancariaId),
-            sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-            sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-          )
-        : and(
-            typeCondition,
-            inArray(movimientosContables.cajaId, cajaIds),
-            isNull(movimientosContables.cuentaBancariaId),
-            sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-            sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-          ),
-    );
-
-  return Number(result[0]?.total ?? 0);
+function getCashboxCondition(cajaIds: string[]) {
+  return cajaIds.length
+    ? sql`${movimientosContables.cajaId} IN (${sql.join(
+        cajaIds.map((id) => sql`${id}`),
+        sql`, `,
+      )})`
+    : sql`FALSE`;
 }
 
-// Unified total: cajas + bank accounts, each movement counted exactly once.
-// Excludes traspasos (internal transfers) from both sources.
-async function getTotalIngresosUnificado(
-  cajaIds: string[],
-  start: string,
-  end: string,
-  traspasoCatId: string | null,
-): Promise<number> {
+async function getMonthlyBreakdown(cajaIds: string[], start: string, end: string, traspasoCatId: string | null) {
+  const expensesCondition = sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`;
+  const cashboxCondition = getCashboxCondition(cajaIds);
   const result = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
+    .select({
+      ingresosCaja: sql<number>`COALESCE(SUM(CASE
+        WHEN LOWER(${movimientosContables.tipo}) = 'ingreso'
+          AND ${cashboxCondition}
+          AND ${movimientosContables.cuentaBancariaId} IS NULL
+        THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+      ingresosBanco: sql<number>`COALESCE(SUM(CASE
+        WHEN LOWER(${movimientosContables.tipo}) = 'ingreso'
+          AND ${movimientosContables.cuentaBancariaId} IS NOT NULL
+        THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+      gastosCaja: sql<number>`COALESCE(SUM(CASE
+        WHEN ${expensesCondition}
+          AND ${cashboxCondition}
+          AND ${movimientosContables.cuentaBancariaId} IS NULL
+        THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+      gastosBanco: sql<number>`COALESCE(SUM(CASE
+        WHEN ${expensesCondition}
+          AND ${movimientosContables.cuentaBancariaId} IS NOT NULL
+        THEN CAST(${movimientosContables.monto} AS DECIMAL) ELSE 0 END), 0)`,
+    })
     .from(movimientosContables)
     .where(
       and(
-        sql`LOWER(${movimientosContables.tipo}) = 'ingreso'`,
-        traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
         or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
+        traspasoCatId ? sql`${movimientosContables.categoriaId} IS DISTINCT FROM ${traspasoCatId}` : sql`TRUE`,
         sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
         sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
       ),
     );
-  return Number(result[0]?.total ?? 0);
-}
 
-async function getTotalGastosUnificado(
-  cajaIds: string[],
-  start: string,
-  end: string,
-  traspasoCatId: string | null,
-): Promise<number> {
-  const result = await db
-    .select({ total: sql<number>`COALESCE(SUM(CAST(${movimientosContables.monto} AS DECIMAL)), 0)` })
-    .from(movimientosContables)
-    .where(
-      and(
-        sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`,
-        traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
-        or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
-        sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-        sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
-      ),
-    );
-  return Number(result[0]?.total ?? 0);
+  const row = result[0];
+  return {
+    ingresosCaja: Number(row?.ingresosCaja ?? 0),
+    ingresosBanco: Number(row?.ingresosBanco ?? 0),
+    gastosCaja: Number(row?.gastosCaja ?? 0),
+    gastosBanco: Number(row?.gastosBanco ?? 0),
+  };
 }
 
 async function getCashStats() {
   try {
     const cajaIds = await getCajaIds();
-
-    if (!cajaIds.length) {
-      const emptyData = { success: true, data: { saldoTotal: 0, ultimosMeses: [] } };
-      return NextResponse.json(emptyData, { status: 200 });
-    }
-
-    const saldoTotal = await getSaldoTotal(cajaIds);
+    const saldoTotal = cajaIds.length ? await getSaldoTotal(cajaIds) : 0;
     const traspasoCatId = await getTraspasoCatId();
 
     const ultimosMeses = await Promise.all(
       buildLastMonthRanges(4).map(async ({ label, start, end }) => {
-        const [ingresos, gastos, totalIngresos, totalGastos] = await Promise.all([
-          getTotalsByType(cajaIds, "ingreso", start, end, traspasoCatId),
-          getTotalsByType(cajaIds, "gasto", start, end, traspasoCatId),
-          getTotalIngresosUnificado(cajaIds, start, end, traspasoCatId),
-          getTotalGastosUnificado(cajaIds, start, end, traspasoCatId),
-        ]);
-
-        return { mes: label, ingresos, gastos, totalIngresos, totalGastos };
+        const breakdown = await getMonthlyBreakdown(cajaIds, start, end, traspasoCatId);
+        return { mes: label, ...breakdown };
       }),
     );
 
