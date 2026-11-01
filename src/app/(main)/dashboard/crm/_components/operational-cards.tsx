@@ -216,7 +216,7 @@ export function OperationalCards() {
       <Card>
         <CardHeader className="gap-3">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle>Ventas Papaleria</CardTitle>
+            <CardTitle>Ventas Papelería</CardTitle>
             <Tabs value={salesView} onValueChange={(value) => setSalesView(value as "monthly" | "biweekly")}>
               <TabsList className="h-8">
                 <TabsTrigger value="monthly" className="px-2 text-xs">
