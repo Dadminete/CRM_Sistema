@@ -1,19 +1,15 @@
 import { NextResponse } from "next/server";
-import { desc, and, gte, lte, eq, ne } from "drizzle-orm";
-import { endOfMonth, startOfMonth } from "date-fns";
 
-import { db } from "@/lib/db";
+import { desc, eq, isNull, ne, or } from "drizzle-orm";
+
 import { withAuth } from "@/lib/api-auth";
+import { db } from "@/lib/db";
 import { banks, categoriasCuentas, movimientosContables } from "@/lib/db/schema";
 
 export const dynamic = "force-dynamic";
 
 async function getRecentMovements() {
   try {
-    const now = new Date();
-    const firstDay = startOfMonth(now);
-    const lastDay = endOfMonth(now);
-
     const traspasoCat = await db
       .select({ id: categoriasCuentas.id })
       .from(categoriasCuentas)
@@ -37,15 +33,8 @@ async function getRecentMovements() {
       .leftJoin(banks, eq(movimientosContables.bankId, banks.id))
       .where(
         traspasoCatId
-          ? and(
-              gte(movimientosContables.fecha, firstDay.toISOString()),
-              lte(movimientosContables.fecha, lastDay.toISOString()),
-              ne(movimientosContables.categoriaId, traspasoCatId),
-            )
-          : and(
-              gte(movimientosContables.fecha, firstDay.toISOString()),
-              lte(movimientosContables.fecha, lastDay.toISOString()),
-            ),
+          ? or(isNull(movimientosContables.categoriaId), ne(movimientosContables.categoriaId, traspasoCatId))
+          : undefined,
       )
       .orderBy(desc(movimientosContables.fecha));
 

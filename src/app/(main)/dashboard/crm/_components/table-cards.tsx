@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from "react";
 
+import type { FilterFn } from "@tanstack/react-table";
+import { format, isValid } from "date-fns";
+import { es } from "date-fns/locale";
 import { Download } from "lucide-react";
 import z from "zod";
 
@@ -16,8 +19,45 @@ import { useDataTableInstance } from "@/hooks/use-data-table-instance";
 import { recentMovementsColumns } from "./columns.crm";
 import { recentMovementSchema } from "./schema";
 
+type RecentMovement = z.infer<typeof recentMovementSchema>;
+
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+const recentMovementsGlobalFilter: FilterFn<RecentMovement> = (row, _columnId, filterValue) => {
+  const query = normalizeSearchValue(String(filterValue ?? ""));
+  if (!query) return true;
+
+  const movement = row.original;
+  const date = new Date(movement.fecha);
+  const dateValues = isValid(date)
+    ? [
+        movement.fecha,
+        format(date, "dd/MM/yyyy", { locale: es }),
+        format(date, "d MMMM yyyy", { locale: es }),
+        format(date, "d 'de' MMMM 'de' yyyy", { locale: es }),
+      ]
+    : [movement.fecha];
+  const values = [
+    ...dateValues,
+    movement.descripcion ?? "",
+    String(movement.monto),
+    movement.tipo,
+    movement.metodo,
+    movement.banco ?? "",
+    movement.categoria ?? "",
+  ];
+
+  return values.some((value) => normalizeSearchValue(value).includes(query));
+};
+
 export function TableCards() {
-  const [data, setData] = useState<z.infer<typeof recentMovementSchema>[]>([]);
+  const [data, setData] = useState<RecentMovement[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -60,6 +100,7 @@ export function TableCards() {
     data,
     columns: recentMovementsColumns,
     getRowId: (row) => row.id,
+    globalFilterFn: recentMovementsGlobalFilter,
   });
 
   return (
@@ -67,7 +108,7 @@ export function TableCards() {
       <Card>
         <CardHeader>
           <CardTitle>Movimientos Recientes</CardTitle>
-          <CardDescription>Seguimiento de los movimientos contables registrados este mes.</CardDescription>
+          <CardDescription>Busca y consulta movimientos contables de cualquier fecha.</CardDescription>
           <CardAction>
             <div className="flex items-center gap-2">
               <Input
