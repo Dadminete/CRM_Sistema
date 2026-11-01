@@ -37,6 +37,7 @@ interface PapeleriaData {
 
 interface BankAccountsData {
   saldoTotal: number;
+  gastosDelMes: number;
   ultimosMeses: {
     mes: string;
     ingresos: number;
@@ -227,6 +228,10 @@ function BankAccountsCard({ data, className }: { data: BankAccountsData | null; 
         <div className="flex items-baseline gap-2">
           <p className="text-3xl font-bold tracking-tight tabular-nums">{formatCurrency(data.saldoTotal)}</p>
           <span className="text-muted-foreground text-xs font-medium tracking-wider uppercase">Total</span>
+        </div>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-muted-foreground">Gastado este mes</span>
+          <span className="font-semibold text-red-500 tabular-nums">{formatCurrency(data.gastosDelMes)}</span>
         </div>
         <ChartContainer config={bankAccountsChartConfig} className="mt-auto h-32 w-full">
           <AreaChart data={data.ultimosMeses} margin={{ top: 5, right: 5, left: 5, bottom: 0 }}>

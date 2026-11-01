@@ -135,7 +135,7 @@ async function getCrmOverview() {
 
     // --- 3. Bank Stats ---
     const getBankData = async () => {
-      const [accountStats, monthlyStatsRaw] = await Promise.all([
+      const [accountStats, monthlyStatsRaw, monthlyExpenses] = await Promise.all([
         db.execute(sql`
           SELECT 
             COALESCE(SUM(CAST(cc.saldo_inicial AS DECIMAL)), 0) as total_inicial,
@@ -156,6 +156,14 @@ async function getCrmOverview() {
             AND fecha >= ${new Date(now.getFullYear(), now.getMonth() - 5, 1).toISOString()}
           GROUP BY DATE_TRUNC('month', fecha)
           ORDER BY DATE_TRUNC('month', fecha) ASC
+        `),
+        db.execute(sql`
+          SELECT COALESCE(SUM(CAST(monto AS DECIMAL)), 0) as gastos_del_mes
+          FROM movimientos_contables
+          WHERE cuenta_bancaria_id IS NOT NULL
+            AND LOWER(tipo) IN ('gasto', 'egreso')
+            AND fecha >= ${firstDayOfMonth.toISOString()}
+            AND fecha < ${new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString()}
         `),
       ]);
 
@@ -184,7 +192,11 @@ async function getCrmOverview() {
         })
         .reverse();
 
-      return { saldoTotal, ultimosMeses };
+      return {
+        saldoTotal,
+        gastosDelMes: Number(monthlyExpenses.rows[0]?.gastos_del_mes ?? 0),
+        ultimosMeses,
+      };
     };
 
     // --- 4. Invoice Stats ---
