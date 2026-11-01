@@ -60,6 +60,7 @@ async function getPendingInvoices(req: Request) {
         id: facturasClientes.id,
         numeroFactura: facturasClientes.numeroFactura,
         fechaFactura: facturasClientes.fechaFactura,
+        createdAt: facturasClientes.createdAt,
         fechaVencimiento: facturasClientes.fechaVencimiento,
         total: facturasClientes.total,
         periodoFacturadoInicio: facturasClientes.periodoFacturadoInicio,

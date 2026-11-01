@@ -399,8 +399,16 @@ export default function PagarFacturaPage() {
                     </div>
                     {selectedFactura.periodoLabel ? (
                       <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-slate-700">Periodo:</span>
+                        <span className="font-semibold text-slate-700">Mes a pagar:</span>
                         <span className="font-bold text-blue-700">{selectedFactura.periodoLabel}</span>
+                      </div>
+                    ) : null}
+                    {selectedFactura.createdAt ? (
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-semibold text-slate-700">Factura creada:</span>
+                        <span className="font-bold text-slate-900">
+                          {formatDate(String(selectedFactura.createdAt))}
+                        </span>
                       </div>
                     ) : null}
                     {esPagoAdelantado && (

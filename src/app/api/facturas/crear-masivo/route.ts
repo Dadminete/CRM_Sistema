@@ -333,7 +333,7 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
 
     const cantidadPeriodos = pagoAdelantadoHabilitado ? cantidadPeriodosAdelantados : 1;
 
-    const suscripciones = await db.execute(sql`
+    const suscripcionesResult = await db.execute(sql`
       SELECT 
         s.id, s.numero_contrato, s.cliente_id, s.servicio_id, s.plan_id,
         s.precio_mensual, s.descuento_aplicado,
@@ -347,14 +347,14 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
         AND s.estado = 'activo'
     `);
 
-    if (suscripciones.rows.length === 0) {
+    if (suscripcionesResult.rows.length === 0) {
       return errorResponse("No se encontraron suscripciones activas válidas", 404);
     }
 
     const descuentoManualNumerico = Number(descuentoManualMonto || 0);
     if (descuentoManualNumerico > 0) {
       const clientesUnicos = new Set(
-        (suscripciones.rows as unknown as Suscripcion[]).map((suscripcion) => suscripcion.cliente_id),
+        (suscripcionesResult.rows as unknown as Suscripcion[]).map((suscripcion) => suscripcion.cliente_id),
       );
 
       if (clientesUnicos.size > 1) {
@@ -388,7 +388,7 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
     const facturasCreadas = [];
     const errores = [];
 
-    const suscripcionesTyped = suscripciones.rows as unknown as Suscripcion[];
+    const suscripcionesTyped = suscripcionesResult.rows as unknown as Suscripcion[];
     const subtotalesBase = suscripcionesTyped.map((suscripcion) => {
       const { subtotal } = calcularMontos(suscripcion, itbisPorcentaje);
       return Math.max(0, subtotal);
@@ -526,13 +526,7 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
               const [suscripcionDb] = await tx
                 .select()
                 .from(suscripciones)
-                .where(
-                  and(
-                    eq(suscripciones.clienteId, suscripcion.cliente_id),
-                    eq(suscripciones.servicioId, suscripcion.servicio_id),
-                    eq(suscripciones.estado, "activo"),
-                  ),
-                )
+                .where(and(eq(suscripciones.id, suscripcion.id), eq(suscripciones.estado, "activo")))
                 .limit(1);
 
               if (suscripcionDb) {
