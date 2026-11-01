@@ -44,7 +44,7 @@ function buildLastMonthRanges(count = 3): MonthRange[] {
     const nextMonth = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
 
     return {
-      label: MONTH_NAMES[date.getUTCMonth()],
+      label: `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCFullYear()}`,
       start: date.toISOString().slice(0, 10),
       end: nextMonth.toISOString().slice(0, 10),
     };
@@ -98,15 +98,15 @@ async function getTotalsByType(
             ne(movimientosContables.categoriaId, traspasoCatId),
             inArray(movimientosContables.cajaId, cajaIds),
             isNull(movimientosContables.cuentaBancariaId),
-            sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
-            sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
           )
         : and(
             typeCondition,
             inArray(movimientosContables.cajaId, cajaIds),
             isNull(movimientosContables.cuentaBancariaId),
-            sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
-            sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
+            sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
           ),
     );
 
@@ -129,8 +129,8 @@ async function getTotalIngresosUnificado(
         sql`LOWER(${movimientosContables.tipo}) = 'ingreso'`,
         traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
         or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
-        sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
-        sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
       ),
     );
   return Number(result[0]?.total ?? 0);
@@ -150,8 +150,8 @@ async function getTotalGastosUnificado(
         sql`LOWER(${movimientosContables.tipo}) IN ('gasto', 'egreso')`,
         traspasoCatId ? ne(movimientosContables.categoriaId, traspasoCatId) : sql`TRUE`,
         or(inArray(movimientosContables.cajaId, cajaIds), sql`${movimientosContables.cuentaBancariaId} IS NOT NULL`),
-        sql`${movimientosContables.fecha} >= (${start}::date AT TIME ZONE 'America/Santo_Domingo')`,
-        sql`${movimientosContables.fecha} < (${end}::date AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} >= (${start}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
+        sql`${movimientosContables.fecha} < (${end}::date::timestamp AT TIME ZONE 'America/Santo_Domingo')`,
       ),
     );
   return Number(result[0]?.total ?? 0);

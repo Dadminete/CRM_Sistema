@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { XAxis, Label, Pie, PieChart, CartesianGrid, YAxis, Line, LineChart } from "recharts";
+import { XAxis, Label, Pie, PieChart, CartesianGrid, YAxis, Bar, BarChart } from "recharts";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,7 +46,7 @@ type TopClientesCumplidosDetalleResponse = {
 const ingresosGastosChartConfig = {
   ingresos: {
     label: "Ingresos totales",
-    color: "var(--chart-5)",
+    color: "var(--chart-1)",
   },
   gastos: {
     label: "Gastos totales",
@@ -182,7 +182,8 @@ export function InsightCards() {
       new Intl.NumberFormat("es-DO", {
         style: "currency",
         currency: "DOP",
-        maximumFractionDigits: 0,
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
       }),
     [],
   );
@@ -323,7 +324,12 @@ export function InsightCards() {
         </CardHeader>
         <CardContent className="size-full max-h-72">
           <ChartContainer config={ingresosGastosChartConfig} className="size-full min-h-56">
-            <LineChart accessibilityLayer data={ingresosGastosData} margin={{ top: 20, right: 12, left: 0, bottom: 0 }}>
+            <BarChart
+              accessibilityLayer
+              data={ingresosGastosData}
+              margin={{ top: 20, right: 12, left: 0, bottom: 0 }}
+              barGap={8}
+            >
               <CartesianGrid vertical={false} />
               <XAxis dataKey="name" tickLine={false} axisLine={false} tickMargin={8} />
               <YAxis
@@ -348,15 +354,29 @@ export function InsightCards() {
                   />
                 }
               />
-              <Line dataKey="ingresos" type="monotone" stroke="var(--color-ingresos)" strokeWidth={2} dot={{ r: 4 }} />
-              <Line dataKey="gastos" type="monotone" stroke="var(--color-gastos)" strokeWidth={2} dot={{ r: 4 }} />
+              <Bar dataKey="ingresos" fill="var(--color-ingresos)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="gastos" fill="var(--color-gastos)" radius={[4, 4, 0, 0]} />
               <ChartLegend content={<ChartLegendContent />} />
-            </LineChart>
+            </BarChart>
           </ChartContainer>
+        </CardContent>
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-2 text-right text-xs tabular-nums">
+            <span className="text-muted-foreground text-left font-semibold">Mes</span>
+            <span className="text-muted-foreground font-semibold">Ingresos</span>
+            <span className="text-muted-foreground font-semibold">Gastos</span>
+            {ingresosGastosData.map((row) => (
+              <div key={row.name} className="contents">
+                <span className="text-left">{row.name}</span>
+                <span>{formatMoneda.format(row.ingresos)}</span>
+                <span>{formatMoneda.format(row.gastos)}</span>
+              </div>
+            ))}
+          </div>
         </CardContent>
         <CardFooter>
           <p className="text-muted-foreground text-xs">
-            Comparación mensual de ingresos y gastos totales de cajas y bancos.
+            Totales mensuales consolidados de cajas y bancos. Los traspasos internos no se cuentan.
           </p>
         </CardFooter>
       </Card>
