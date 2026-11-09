@@ -1,6 +1,6 @@
 # Sistema de Gestión v3.0
 
-Sistema integral de gestión empresarial desarrollado con Next.js 15, TypeScript y PostgreSQL. Incluye CRM, gestión de inventario, facturación, contabilidad y administración de usuarios con control de roles y permisos granular.
+Sistema integral de gestión empresarial desarrollado con Next.js 16, TypeScript y PostgreSQL. Incluye CRM, gestión de inventario, facturación, contabilidad y administración de usuarios con control de roles y permisos granular.
 
 ## 🚀 Características Principales
 
@@ -25,7 +25,7 @@ Sistema integral de gestión empresarial desarrollado con Next.js 15, TypeScript
 ### Performance
 -  Paginación optimizada en todas las listas
 -  Índices de base de datos estratégicos
--  Connection pooling con Neon Serverless
+-  Connection pooling de PostgreSQL con `pg` y Supabase
 -  Optimización de imágenes con Next.js Image
 -  Lazy loading y code splitting
 
@@ -39,9 +39,9 @@ Sistema integral de gestión empresarial desarrollado con Next.js 15, TypeScript
 
 | Categoría | Tecnología | Versión |
 |-----------|-----------|---------|
-| **Framework** | Next.js | 15.4.5 |
+| **Framework** | Next.js | 16.2.10 |
 | **Lenguaje** | TypeScript | 5.8.3 |
-| **Base de Datos** | PostgreSQL (Neon) | - |
+| **Base de Datos** | PostgreSQL (Supabase) | - |
 | **ORM** | Drizzle ORM | 0.45.1 |
 | **UI** | shadcn/ui + Tailwind CSS | 4.1.5 |
 | **Autenticación** | JWT + bcrypt | - |
@@ -54,7 +54,7 @@ Sistema integral de gestión empresarial desarrollado con Next.js 15, TypeScript
 ```
 Sistema_de_Gestion_v3.0/
 ├── src/
-│   ├── app/                    # App Router (Next.js 15)
+│   ├── app/                    # App Router (Next.js 16)
 │   │   ├── (external)/         # Rutas públicas (login, reset-password)
 │   │   ├── (main)/             # Rutas protegidas (dashboard)
 │   │   │   ├── dashboard/      # Módulos principales
@@ -89,7 +89,7 @@ Sistema_de_Gestion_v3.0/
 │   │   ├── audit.ts            # Sistema de auditoría
 │   │   ├── notifications.ts    # Sistema de notificaciones
 │   │   ├── db/                 # Configuración Drizzle ORM
-│   │   │   ├── index.ts        # Cliente Neon
+│   │   │   ├── index.ts        # Cliente PostgreSQL (`pg`)
 │   │   │   └── schema.ts       # Esquemas de tablas
 │   │   └── export/
 │   │       └── excel.ts        # Utilidades de exportación
@@ -129,7 +129,7 @@ npm install
 Crea un archivo `.env.local` en la raíz del proyecto:
 
 ```env
-# Database (Neon PostgreSQL)
+# Database (Supabase PostgreSQL)
 DATABASE_URL="postgresql://user:password@host/database?sslmode=verify-full"
 
 # JWT Secret (CAMBIAR EN PRODUCCIÓN - mínimo 32 caracteres)
@@ -167,7 +167,7 @@ Si no usas webhook, el backup/restauración por `pg_dump` y `psql` solo funciona
 
 ### 4. Ejecutar Migraciones de Base de Datos
 
-**IMPORTANTE:** Ejecuta estos archivos SQL manualmente en tu base de datos PostgreSQL/Neon:
+**IMPORTANTE:** Ejecuta estos archivos SQL manualmente en tu base de datos PostgreSQL/Supabase:
 
 ```sql
 -- 1. Migración de notificaciones
@@ -311,6 +311,26 @@ Ver [SECURITY.md](SECURITY.md) para la política de reporte de vulnerabilidades.
    - Click "Deploy"
    - Vercel detectará automáticamente Next.js y optimizará el build
 
+### Cloudflare Workers
+
+El proyecto usa OpenNext para adaptar Next.js al runtime de Cloudflare Workers.
+
+1. Crea un bucket R2 llamado `crm-sistema-opennext-cache` antes del primer despliegue.
+2. En la configuración de builds del Worker, usa:
+   - Build command: `npm run cf:build`
+   - Deploy command: `npm run cf:deploy`
+3. En **Build variables**, agrega `DATABASE_URL` con un valor local ficticio, por ejemplo
+   `postgresql://build:build@127.0.0.1:5432/build`. Next.js necesita la variable durante la
+   compilación, pero el build no debe conectarse con esta URL.
+4. En **Settings → Variables and Secrets**, agrega como secretos de runtime:
+   - `DATABASE_URL`: conexión al pooler de transacciones de Supabase (puerto `6543`), con
+     `sslmode=require`. No incluyas una ruta `sslrootcert` local.
+   - `JWT_SECRET`: una clave aleatoria de al menos 32 caracteres.
+5. Habilita el dominio `workers.dev` para el Worker y vuelve a desplegar la rama de producción.
+
+No uses las credenciales reales de producción como Build variables. Configura los secretos
+solo en el Worker y no los agregues al repositorio.
+
 ### Otras Plataformas (Docker, VPS)
 
 ```bash
@@ -395,4 +415,4 @@ Ver [LICENSE](LICENSE) para más información.
 
 ---
 
-Desarrollado con ❤️ usando Next.js 15 y TypeScript
+Desarrollado con ❤️ usando Next.js 16 y TypeScript

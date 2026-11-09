@@ -4,7 +4,7 @@ import { jwtVerify } from "jose";
 
 import { middlewareLogger } from "./lib/logger";
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "your-secret-key-change-this-in-production");
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET ?? "your-secret-key-change-this-in-production");
 const protectedRoutes = ["/dashboard"];
 const authRoutes = ["/auth"];
 
@@ -20,7 +20,7 @@ async function verifyTokenEdge(token: string): Promise<boolean> {
   }
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("auth-token")?.value;
   const isAuthenticated = token ? await verifyTokenEdge(token) : false;
@@ -38,7 +38,7 @@ export async function proxy(request: NextRequest) {
   }
 
   const response = NextResponse.next();
-  const origin = request.headers.get("origin") || "*";
+  const origin = request.headers.get("origin") ?? "*";
   response.headers.set("Access-Control-Allow-Origin", origin);
   response.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
   response.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, Accept");
