@@ -7,28 +7,12 @@ type BackupInfo = {
   name: string;
   size: number;
   createdAt: Date;
-  provider: "local" | "neon-snapshot";
+  provider: "local";
   actions: {
     download: boolean;
     restore: boolean;
     delete: boolean;
   };
-};
-
-type NeonSnapshot = {
-  id: string;
-  name?: string;
-  created_at?: string;
-  full_size?: number;
-  diff_size?: number;
-};
-
-type NeonSnapshotCreateResponse = {
-  snapshot?: NeonSnapshot;
-};
-
-type NeonSnapshotListResponse = {
-  snapshots?: NeonSnapshot[];
 };
 
 let backupsCache: { value: BackupInfo[]; expiresAt: number } | null = null;
@@ -39,103 +23,9 @@ const invalidateBackupsCache = () => {
 
 const isVercelEnvironment = () => process.env.VERCEL === "1" || Boolean(process.env.VERCEL_URL);
 const postgresBinaryName = (tool: "pg_dump" | "psql") => (process.platform === "win32" ? `${tool}.exe` : tool);
-const NEON_API_BASE_URL = "https://console.neon.tech/api/v2";
-
-const toIsoDate = (value?: string) => {
-  if (!value) return new Date();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
-};
-
-const toSnapshotSize = (snapshot: NeonSnapshot) => {
-  if (typeof snapshot.full_size === "number") return snapshot.full_size;
-  if (typeof snapshot.diff_size === "number") return snapshot.diff_size;
-  return 0;
-};
-
-const mapSnapshotToBackupInfo = (snapshot: NeonSnapshot): BackupInfo => ({
-  id: `snapshot:${snapshot.id}`,
-  name: snapshot.name ?? snapshot.id,
-  size: toSnapshotSize(snapshot),
-  createdAt: toIsoDate(snapshot.created_at),
-  provider: "neon-snapshot",
-  actions: {
-    download: false,
-    restore: false,
-    delete: true,
-  },
-});
-
-const getNeonCredentials = () => ({
-  apiKey: process.env.NEON_API_KEY,
-  projectId: process.env.NEON_PROJECT_ID,
-  branchId: process.env.NEON_BRANCH_ID,
-});
-
 export const backupService = {
   getBackupPath: () => process.env.BACKUP_PATH ?? path.join(process.cwd(), "backups"),
   getPostgresBin: () => process.env.POSTGRES_BIN_PATH ?? "",
-  hasNeonSnapshotSupport() {
-    const { apiKey, projectId, branchId } = getNeonCredentials();
-    return Boolean(apiKey && projectId && branchId);
-  },
-  async neonRequest<T>(pathName: string, init?: RequestInit): Promise<T> {
-    const { apiKey, projectId } = getNeonCredentials();
-
-    if (!apiKey || !projectId) {
-      throw new Error("Faltan variables para Neon API. Configura NEON_API_KEY y NEON_PROJECT_ID en Vercel.");
-    }
-
-    const response = await fetch(`${NEON_API_BASE_URL}/projects/${projectId}${pathName}`, {
-      ...init,
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        ...(init?.headers ?? {}),
-      },
-    });
-
-    if (!response.ok) {
-      const details = await response.text();
-      throw new Error(`Neon API respondió ${response.status}: ${details ?? "sin detalle"}`);
-    }
-
-    if (response.status === 204) {
-      return {} as T;
-    }
-
-    return (await response.json()) as T;
-  },
-  async createBackupViaNeonSnapshot() {
-    const { branchId } = getNeonCredentials();
-    if (!branchId) {
-      throw new Error("Falta NEON_BRANCH_ID para crear snapshots en Neon desde Vercel.");
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const snapshotName = `dashboard-${timestamp}`;
-    const payload = await this.neonRequest<NeonSnapshotCreateResponse>(`/branches/${branchId}/snapshot`, {
-      method: "POST",
-      body: JSON.stringify({
-        name: snapshotName,
-      }),
-    });
-
-    const snapshot = payload.snapshot;
-    if (!snapshot?.id) {
-      throw new Error("Neon no devolvió información del snapshot creado.");
-    }
-
-    invalidateBackupsCache();
-    return {
-      success: true,
-      delegated: true,
-      provider: "neon-snapshot",
-      snapshotId: snapshot.id,
-      snapshotName: snapshot.name ?? snapshotName,
-      createdAt: snapshot.created_at ?? new Date().toISOString(),
-    };
-  },
   getPostgresExecutable(tool: "pg_dump" | "psql") {
     const binaryName = postgresBinaryName(tool);
     return this.getPostgresBin() ? path.join(this.getPostgresBin(), binaryName) : binaryName;
@@ -186,14 +76,9 @@ export const backupService = {
     if (webhookUrl) {
       return this.createBackupViaWebhook(webhookUrl, dbUrl);
     }
-
-    if (this.hasNeonSnapshotSupport()) {
-      return this.createBackupViaNeonSnapshot();
-    }
-
     if (isVercelEnvironment()) {
       throw new Error(
-        "En Vercel no se puede ejecutar pg_dump ni guardar respaldos locales persistentes. Configura BACKUP_WEBHOOK_URL o variables NEON_API_KEY + NEON_PROJECT_ID + NEON_BRANCH_ID para usar snapshots de Neon desde este panel.",
+        "En Vercel no se puede ejecutar pg_dump ni guardar respaldos locales persistentes. Configura BACKUP_WEBHOOK_URL para generar respaldos desde este panel.",
       );
     }
 
@@ -213,8 +98,6 @@ export const backupService = {
 
     return new Promise((resolve, reject) => {
       const args = ["--no-owner", "--no-privileges", dbUrl, "-f", filePath];
-      console.log("Running command:", pgDumpPath, args.join(" "));
-
       // Use shell: false (default) to avoid quoting issues on Windows
       const child = spawn(pgDumpPath, args, { shell: false });
 
@@ -237,7 +120,7 @@ export const backupService = {
             success: true,
             fileName,
             filePath,
-            provider: "local",
+            provider: "local" as const,
           });
         } else {
           console.error("Backup failed:", errorOutput);
@@ -257,29 +140,6 @@ export const backupService = {
       return backupsCache.value;
     }
 
-    if (this.hasNeonSnapshotSupport()) {
-      const { branchId } = getNeonCredentials();
-      if (!branchId) {
-        throw new Error("Falta NEON_BRANCH_ID para listar snapshots de Neon.");
-      }
-
-      try {
-        const payload = await this.neonRequest<NeonSnapshotListResponse>("/snapshots", {
-          method: "GET",
-        });
-        const snapshots = (payload.snapshots ?? []).filter((snapshot) => snapshot.id && snapshot.id.length > 0);
-        const backups = snapshots
-          .map((snapshot) => mapSnapshotToBackupInfo(snapshot))
-          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-        backupsCache = { value: backups, expiresAt: Date.now() + BACKUPS_CACHE_TTL_MS };
-        return backups;
-      } catch (error) {
-        console.error("Error listing Neon snapshots:", error);
-        return [];
-      }
-    }
-
     const directory = this.getBackupPath();
     if (!fs.existsSync(directory)) return [];
 
@@ -294,7 +154,7 @@ export const backupService = {
             name: fileName,
             size: stats.size,
             createdAt: stats.birthtime,
-            provider: "local",
+            provider: "local" as const,
             actions: {
               download: true,
               restore: true,
@@ -314,17 +174,6 @@ export const backupService = {
   },
 
   async deleteBackup(fileNameOrId: string) {
-    if (fileNameOrId.startsWith("snapshot:")) {
-      const snapshotId = fileNameOrId.slice("snapshot:".length);
-      if (!snapshotId) {
-        throw new Error("Identificador de snapshot inválido.");
-      }
-
-      await this.neonRequest(`/snapshots/${snapshotId}`, { method: "DELETE" });
-      invalidateBackupsCache();
-      return true;
-    }
-
     const filePath = path.join(this.getBackupPath(), fileNameOrId);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
@@ -337,8 +186,10 @@ export const backupService = {
   async restoreBackup(fileName: string) {
     const filePath = path.join(this.getBackupPath(), fileName);
     const psqlPath = this.getPostgresExecutable("psql");
+    const dbUrl = process.env.BACKUP_DATABASE_URL ?? process.env.DATABASE_URL;
 
     if (!fs.existsSync(filePath)) throw new Error("Archivo de respaldo no encontrado");
+    if (!dbUrl) throw new Error("No hay URL de base de datos disponible para restaurar el backup");
 
     if (isVercelEnvironment()) {
       throw new Error(
@@ -352,8 +203,7 @@ export const backupService = {
     }
 
     return new Promise((resolve, reject) => {
-      const args = [process.env.DATABASE_URL!, "-f", filePath];
-      console.log("Running restore command:", psqlPath, args.join(" "));
+      const args = [dbUrl, "-f", filePath];
 
       const child = spawn(psqlPath, args, { shell: false });
 

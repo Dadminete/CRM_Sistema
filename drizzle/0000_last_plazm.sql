@@ -1305,7 +1305,7 @@ CREATE INDEX "clientes_papeleria_activo_idx" ON "clientes_papeleria" USING btree
 CREATE INDEX "comisiones_id_empleado_idx" ON "comisiones" USING btree ("id_empleado" int8_ops);--> statement-breakpoint
 CREATE INDEX "comisiones_id_tipo_comision_idx" ON "comisiones" USING btree ("id_tipo_comision" int8_ops);--> statement-breakpoint
 CREATE INDEX "comisiones_periodo_año_periodo_mes_idx" ON "comisiones" USING btree ("periodo_año" int4_ops,"periodo_mes" int4_ops);--> statement-breakpoint
-CREATE INDEX "compras_papeleria_estado_idx" ON "compras_papeleria" USING btree ("estado" text_ops);--> statement-breakpoint
+CREATE INDEX "compras_papeleria_estado_idx" ON "compras_papeleria" USING btree ("estado" enum_ops);--> statement-breakpoint
 CREATE INDEX "compras_papeleria_fecha_compra_idx" ON "compras_papeleria" USING btree ("fecha_compra" date_ops);--> statement-breakpoint
 CREATE UNIQUE INDEX "compras_papeleria_numero_compra_key" ON "compras_papeleria" USING btree ("numero_compra" text_ops);--> statement-breakpoint
 CREATE INDEX "compras_papeleria_proveedor_id_idx" ON "compras_papeleria" USING btree ("proveedor_id" uuid_ops);--> statement-breakpoint
@@ -1384,7 +1384,7 @@ CREATE INDEX "movimientos_contables_tipo_idx" ON "movimientos_contables" USING b
 CREATE INDEX "movimientos_contables_usuario_id_idx" ON "movimientos_contables" USING btree ("usuario_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "movimientos_inventario_fecha_movimiento_idx" ON "movimientos_inventario" USING btree ("fecha_movimiento" timestamptz_ops);--> statement-breakpoint
 CREATE INDEX "movimientos_inventario_producto_id_idx" ON "movimientos_inventario" USING btree ("producto_id" int8_ops);--> statement-breakpoint
-CREATE INDEX "movimientos_inventario_tipo_movimiento_idx" ON "movimientos_inventario" USING btree ("tipo_movimiento" text_ops);--> statement-breakpoint
+CREATE INDEX "movimientos_inventario_tipo_movimiento_idx" ON "movimientos_inventario" USING btree ("tipo_movimiento" enum_ops);--> statement-breakpoint
 CREATE INDEX "movimientos_inventario_usuario_id_idx" ON "movimientos_inventario" USING btree ("usuario_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "nomina_estado_pago_idx" ON "nomina" USING btree ("estado_pago" text_ops);--> statement-breakpoint
 CREATE INDEX "nomina_fecha_pago_idx" ON "nomina" USING btree ("fecha_pago" date_ops);--> statement-breakpoint
@@ -1422,7 +1422,7 @@ CREATE INDEX "periodos_nomina_ano_mes_idx" ON "periodos_nomina" USING btree ("an
 CREATE UNIQUE INDEX "periodos_nomina_codigo_periodo_key" ON "periodos_nomina" USING btree ("codigo_periodo" text_ops);--> statement-breakpoint
 CREATE INDEX "periodos_nomina_fecha_pago_idx" ON "periodos_nomina" USING btree ("fecha_pago" date_ops);--> statement-breakpoint
 CREATE INDEX "periodos_vacaciones_ano_idx" ON "periodos_vacaciones" USING btree ("ano" int4_ops);--> statement-breakpoint
-CREATE UNIQUE INDEX "periodos_vacaciones_id_empleado_ano_id_tipo_vacacion_key" ON "periodos_vacaciones" USING btree ("id_empleado" int4_ops,"ano" int8_ops,"id_tipo_vacacion" int4_ops);--> statement-breakpoint
+CREATE UNIQUE INDEX "periodos_vacaciones_id_empleado_ano_id_tipo_vacacion_key" ON "periodos_vacaciones" USING btree ("id_empleado" int8_ops,"ano" int4_ops,"id_tipo_vacacion" int8_ops);--> statement-breakpoint
 CREATE INDEX "periodos_vacaciones_id_empleado_idx" ON "periodos_vacaciones" USING btree ("id_empleado" int8_ops);--> statement-breakpoint
 CREATE INDEX "periodos_vacaciones_id_tipo_vacacion_idx" ON "periodos_vacaciones" USING btree ("id_tipo_vacacion" int8_ops);--> statement-breakpoint
 CREATE INDEX "permisos_activo_idx" ON "permisos" USING btree ("activo" bool_ops);--> statement-breakpoint
@@ -1505,7 +1505,7 @@ CREATE INDEX "usuarios_roles_usuario_id_idx" ON "usuarios_roles" USING btree ("u
 CREATE INDEX "ventas_papeleria_caja_id_idx" ON "ventas_papeleria" USING btree ("caja_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "ventas_papeleria_cliente_id_idx" ON "ventas_papeleria" USING btree ("cliente_id" uuid_ops);--> statement-breakpoint
 CREATE INDEX "ventas_papeleria_cuenta_bancaria_id_idx" ON "ventas_papeleria" USING btree ("cuenta_bancaria_id" uuid_ops);--> statement-breakpoint
-CREATE INDEX "ventas_papeleria_estado_idx" ON "ventas_papeleria" USING btree ("estado" text_ops);--> statement-breakpoint
+CREATE INDEX "ventas_papeleria_estado_idx" ON "ventas_papeleria" USING btree ("estado" enum_ops);--> statement-breakpoint
 CREATE INDEX "ventas_papeleria_fecha_venta_idx" ON "ventas_papeleria" USING btree ("fecha_venta" timestamptz_ops);--> statement-breakpoint
 CREATE UNIQUE INDEX "ventas_papeleria_numero_venta_key" ON "ventas_papeleria" USING btree ("numero_venta" text_ops);--> statement-breakpoint
 CREATE INDEX "ventas_papeleria_usuario_id_idx" ON "ventas_papeleria" USING btree ("usuario_id" uuid_ops);

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+
+import { CheckCircle2, Loader2, Terminal, XCircle } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +14,6 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { Terminal, CheckCircle2, AlertCircle, Loader2, XCircle } from "lucide-react";
 
 interface SyncLogModalProps {
   isOpen: boolean;
@@ -26,7 +28,7 @@ export function SyncLogModal({ isOpen, onClose, logs, status }: SyncLogModalProp
   // Auto-scroll to bottom as logs arrive
   useEffect(() => {
     if (scrollRef.current) {
-      const scrollElement = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]');
+      const scrollElement = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
       if (scrollElement) {
         scrollElement.scrollTop = scrollElement.scrollHeight;
       }
@@ -35,22 +37,20 @@ export function SyncLogModal({ isOpen, onClose, logs, status }: SyncLogModalProp
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && status !== "syncing" && onClose()}>
-      <DialogContent className="max-w-2xl bg-slate-950 text-slate-50 border-slate-800">
+      <DialogContent className="max-w-2xl border-slate-800 bg-slate-950 text-slate-50">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <div className="p-2 bg-blue-500/10 rounded-full">
+            <div className="rounded-full bg-blue-500/10 p-2">
               <Terminal className="h-5 w-5 text-blue-400" />
             </div>
             <div>
               <DialogTitle className="text-xl">Consola de Sincronización</DialogTitle>
-              <DialogDescription className="text-slate-400">
-                Transfiriendo datos locales a Neon Cloud (Mirroring)
-              </DialogDescription>
+              <DialogDescription className="text-slate-400">Estado de conexión a Supabase PostgreSQL</DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
-        <div className="relative mt-4 bg-black/50 rounded-lg border border-slate-800 overflow-hidden">
+        <div className="relative mt-4 overflow-hidden rounded-lg border border-slate-800 bg-black/50">
           <ScrollArea ref={scrollRef} className="h-[400px] p-4 font-mono text-xs leading-relaxed">
             {logs.length === 0 ? (
               <div className="text-slate-500 italic">Esperando inicio de proceso...</div>
@@ -59,15 +59,15 @@ export function SyncLogModal({ isOpen, onClose, logs, status }: SyncLogModalProp
                 const isError = log.includes("[ERROR]") || log.includes("[CRITICAL]");
                 const isSuccess = log.includes("[SUCCESS]");
                 const isSystem = log.includes("[SISTEMA]");
-                
+
                 return (
                   <div key={i} className="mb-1 flex gap-2">
-                    <span className="text-slate-600 shrink-0">[{new Date().toLocaleTimeString([], { hour12: false })}]</span>
-                    <span className={`
-                      ${isError ? "text-red-400 font-bold" : ""}
-                      ${isSuccess ? "text-green-400 font-bold" : ""}
-                      ${isSystem ? "text-blue-400 italic" : "text-slate-300"}
-                    `}>
+                    <span className="shrink-0 text-slate-600">
+                      [{new Date().toLocaleTimeString([], { hour12: false })}]
+                    </span>
+                    <span
+                      className={` ${isError ? "font-bold text-red-400" : ""} ${isSuccess ? "font-bold text-green-400" : ""} ${isSystem ? "text-blue-400 italic" : "text-slate-300"} `}
+                    >
                       {log}
                     </span>
                   </div>
@@ -77,7 +77,7 @@ export function SyncLogModal({ isOpen, onClose, logs, status }: SyncLogModalProp
           </ScrollArea>
         </div>
 
-        <DialogFooter className="flex items-center justify-between sm:justify-between border-t border-slate-800 pt-4 mt-2">
+        <DialogFooter className="mt-2 flex items-center justify-between border-t border-slate-800 pt-4 sm:justify-between">
           <div className="flex items-center gap-2">
             {status === "syncing" && (
               <>
@@ -98,9 +98,9 @@ export function SyncLogModal({ isOpen, onClose, logs, status }: SyncLogModalProp
               </>
             )}
           </div>
-          <Button 
-            variant="outline" 
-            onClick={onClose} 
+          <Button
+            variant="outline"
+            onClick={onClose}
             disabled={status === "syncing"}
             className="border-slate-700 hover:bg-slate-800 hover:text-white"
           >

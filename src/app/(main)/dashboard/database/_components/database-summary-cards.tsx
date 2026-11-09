@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type DatabaseConfig = {
   backupPath: string;
-  backupMode?: "local" | "neon-snapshot";
+  backupMode?: "local";
   localStatus?: string;
   cloudStatus?: string;
   localUrl?: string;
@@ -65,7 +65,7 @@ export function DatabaseSummaryCards({
           <div className="mt-1 flex items-center justify-between gap-1">
             <div className="flex flex-col">
               <p className="text-muted-foreground text-[10px] font-semibold uppercase">
-                {config?.cloudUrl ?? "Neon DB"}
+                {config?.cloudUrl ?? "PostgreSQL"}
               </p>
               {config?.pendingSyncCount && config.pendingSyncCount > 0 ? (
                 <Badge variant="destructive" className="h-4 animate-pulse px-1 text-[9px]">
@@ -99,9 +99,7 @@ export function DatabaseSummaryCards({
         <CardContent>
           <div className="text-2xl font-bold">{backupsCount}</div>
           <p className="text-muted-foreground text-xs">
-            {config?.backupMode === "neon-snapshot"
-              ? "Snapshots administrados en Neon Cloud"
-              : `Archivos en storage local ${config?.backupPath ? `(${config.backupPath})` : ""}`}
+            {`Archivos en storage local ${config?.backupPath ? `(${config.backupPath})` : ""}`}
           </p>
         </CardContent>
       </Card>

@@ -8,11 +8,11 @@ import { backupService } from "@/lib/db/backup-service";
 
 export const GET = withAuth(
   async () => {
-    // Local DB has been removed; this system uses Neon Cloud exclusively.
+    // The application uses a single PostgreSQL database.
     const localStatus = "N/A";
     let cloudStatus = "offline";
 
-    // Check Cloud (Neon) Status
+    // Check database connectivity.
     try {
       await Promise.race([
         cloudDb.execute(sql`SELECT 1`),
@@ -26,13 +26,25 @@ export const GET = withAuth(
 
     return NextResponse.json({
       backupPath: backupService.getBackupPath(),
-      backupMode: backupService.hasNeonSnapshotSupport() ? "neon-snapshot" : "local",
+      backupMode: "local",
       localStatus,
       cloudStatus,
       localUrl: "N/A (Deshabilitado)",
-      cloudUrl: process.env.CLOUD_DATABASE_URL?.split("@")[1]?.split("?")[0] ?? "Neon Cloud",
+      cloudUrl: getDatabaseHost(),
       pendingSyncCount: 0,
     });
   },
   { requiredPermission: "database:view" },
 );
+
+function getDatabaseHost() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) return "PostgreSQL";
+
+  try {
+    const url = new URL(connectionString);
+    return `${url.hostname}${url.port ? `:${url.port}` : ""}`;
+  } catch {
+    return "PostgreSQL";
+  }
+}

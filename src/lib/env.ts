@@ -23,9 +23,6 @@ const envSchema = z.object({
   BACKUP_DATABASE_URL: z.string().url().optional(),
   BACKUP_WEBHOOK_URL: z.string().url().optional(),
   BACKUP_WEBHOOK_TOKEN: z.string().optional(),
-  NEON_API_KEY: z.string().optional(),
-  NEON_PROJECT_ID: z.string().optional(),
-  NEON_BRANCH_ID: z.string().optional(),
 
   // Email Configuration (optional but all required if one is set)
   SMTP_HOST: z.string().optional(),

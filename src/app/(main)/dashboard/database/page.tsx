@@ -22,7 +22,7 @@ interface Backup {
   name: string;
   size: number;
   createdAt: string;
-  provider?: "local" | "neon-snapshot";
+  provider?: "local";
   actions?: {
     download: boolean;
     restore: boolean;
@@ -34,7 +34,7 @@ export default function DatabasePage() {
   const [backups, setBackups] = useState<Backup[]>([]);
   const [config, setConfig] = useState<{
     backupPath: string;
-    backupMode?: "local" | "neon-snapshot";
+    backupMode?: "local";
     localStatus?: string;
     cloudStatus?: string;
     localUrl?: string;
@@ -180,8 +180,6 @@ export default function DatabasePage() {
         const finishedAt = new Date();
         const payload = (data.data ?? {}) as {
           provider?: string;
-          snapshotId?: string;
-          snapshotName?: string;
           fileName?: string;
         };
 
@@ -196,8 +194,6 @@ export default function DatabasePage() {
           durationSeconds: Math.max(0, Math.floor((finishedAt.getTime() - startedAt.getTime()) / 1000)),
           provider: payload.provider ?? config?.backupMode ?? "local",
           mode: config?.backupMode ?? "local",
-          snapshotId: payload.snapshotId,
-          snapshotName: payload.snapshotName,
           fileName: payload.fileName,
         });
         toast.success("Respaldo creado con éxito");
@@ -223,19 +219,10 @@ export default function DatabasePage() {
   };
 
   const handleDownload = (backup: Backup) => {
-    if (backup.actions?.download === false) {
-      toast.info("Los snapshots de Neon no se descargan como archivo .sql desde este panel.");
-      return;
-    }
     window.open(`/api/database/download?fileName=${encodeURIComponent(backup.name)}`, "_blank");
   };
 
   const handleRestore = async (backup: Backup) => {
-    if (backup.actions?.restore === false) {
-      toast.info("La restauración de snapshots Neon se gestiona desde Neon Console.");
-      return;
-    }
-
     const fileName = backup.name;
     if (
       !confirm(
@@ -332,7 +319,7 @@ export default function DatabasePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Gestión de Base de Datos</h1>
-          <p className="text-muted-foreground">Administra tus respaldos de Neon PostgreSQL y restaura datos.</p>
+          <p className="text-muted-foreground">Administra tus respaldos de PostgreSQL y restaura datos.</p>
         </div>
         <Button
           onClick={handleCreateBackup}
@@ -414,21 +401,12 @@ export default function DatabasePage() {
                       <TableCell>{format(new Date(backup.createdAt), "PPP p", { locale: es })}</TableCell>
                       <TableCell>{formatSize(backup.size)}</TableCell>
                       <TableCell>
-                        {backup.provider === "neon-snapshot" ? (
-                          <Badge
-                            variant="outline"
-                            className="border-blue-200 bg-blue-100 text-blue-700 hover:bg-blue-100"
-                          >
-                            Snapshot Neon
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="border-green-200 bg-green-100 text-green-700 hover:bg-green-100"
-                          >
-                            Listo
-                          </Badge>
-                        )}
+                        <Badge
+                          variant="outline"
+                          className="border-green-200 bg-green-100 text-green-700 hover:bg-green-100"
+                        >
+                          Listo
+                        </Badge>
                       </TableCell>
                       <TableCell className="flex justify-end gap-2 text-right">
                         <Button
@@ -474,10 +452,8 @@ export default function DatabasePage() {
       <div className="bg-primary/5 border-primary/20 flex items-center gap-4 rounded-lg border p-4 text-sm opacity-80">
         <ShieldCheck className="text-primary h-5 w-5 shrink-0" />
         <p>
-          <strong>Seguridad:</strong>{" "}
-          {config?.backupMode === "neon-snapshot"
-            ? "En Vercel, los backups se crean como snapshots de Neon. Para restaurar snapshots, usa Neon Console."
-            : "Los respaldos se guardan en local para mayor privacidad. Se recomienda descargar copias importantes de forma periódica."}
+          <strong>Seguridad:</strong> Los respaldos se guardan en local para mayor privacidad. Se recomienda descargar
+          copias importantes de forma periódica.
         </p>
       </div>
       <SyncLogModal

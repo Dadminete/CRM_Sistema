@@ -463,9 +463,9 @@ export const periodosVacaciones = pgTable(
     index("periodos_vacaciones_ano_idx").using("btree", table.ano.asc().nullsLast().op("int4_ops")),
     uniqueIndex("periodos_vacaciones_id_empleado_ano_id_tipo_vacacion_key").using(
       "btree",
-      table.idEmpleado.asc().nullsLast().op("int4_ops"),
-      table.ano.asc().nullsLast().op("int8_ops"),
-      table.idTipoVacacion.asc().nullsLast().op("int4_ops"),
+      table.idEmpleado.asc().nullsLast().op("int8_ops"),
+      table.ano.asc().nullsLast().op("int4_ops"),
+      table.idTipoVacacion.asc().nullsLast().op("int8_ops"),
     ),
     index("periodos_vacaciones_id_empleado_idx").using("btree", table.idEmpleado.asc().nullsLast().op("int8_ops")),
     index("periodos_vacaciones_id_tipo_vacacion_idx").using(
@@ -1059,7 +1059,7 @@ export const comprasPapeleria = pgTable(
     updatedAt: timestamp("updated_at", { precision: 6, withTimezone: true, mode: "string" }).notNull(),
   },
   (table) => [
-    index("compras_papeleria_estado_idx").using("btree", table.estado.asc().nullsLast().op("text_ops")),
+    index("compras_papeleria_estado_idx").using("btree", table.estado.asc().nullsLast().op("enum_ops")),
     index("compras_papeleria_fecha_compra_idx").using("btree", table.fechaCompra.asc().nullsLast().op("date_ops")),
     uniqueIndex("compras_papeleria_numero_compra_key").using(
       "btree",
@@ -1859,7 +1859,7 @@ export const movimientosInventario = pgTable(
     index("movimientos_inventario_producto_id_idx").using("btree", table.productoId.asc().nullsLast().op("int8_ops")),
     index("movimientos_inventario_tipo_movimiento_idx").using(
       "btree",
-      table.tipoMovimiento.asc().nullsLast().op("text_ops"),
+      table.tipoMovimiento.asc().nullsLast().op("enum_ops"),
     ),
     index("movimientos_inventario_usuario_id_idx").using("btree", table.usuarioId.asc().nullsLast().op("uuid_ops")),
     foreignKey({
@@ -2087,7 +2087,7 @@ export const ventasPapeleria = pgTable(
       "btree",
       table.cuentaBancariaId.asc().nullsLast().op("uuid_ops"),
     ),
-    index("ventas_papeleria_estado_idx").using("btree", table.estado.asc().nullsLast().op("text_ops")),
+    index("ventas_papeleria_estado_idx").using("btree", table.estado.asc().nullsLast().op("enum_ops")),
     index("ventas_papeleria_fecha_venta_idx").using("btree", table.fechaVenta.asc().nullsLast().op("timestamptz_ops")),
     uniqueIndex("ventas_papeleria_numero_venta_key").using("btree", table.numeroVenta.asc().nullsLast().op("text_ops")),
     index("ventas_papeleria_usuario_id_idx").using("btree", table.usuarioId.asc().nullsLast().op("uuid_ops")),
