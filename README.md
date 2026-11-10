@@ -289,27 +289,17 @@ Ver [SECURITY.md](SECURITY.md) para la política de reporte de vulnerabilidades.
 
 ### Vercel (Recomendado)
 
-1. **Conecta el Repositorio**
-   - Crea proyecto en [vercel.com](https://vercel.com)
-   - Importa desde GitHub
+1. Importa este repositorio desde GitHub en [Vercel](https://vercel.com).
+2. En **Settings → Environment Variables**, configura para **Production** y **Preview**:
+   - `DATABASE_URL`: conexión al pooler de transacciones de Supabase (puerto `6543`) con `sslmode=require`. Esta variable debe estar disponible durante el build y en runtime. No uses una URL local ni agregues credenciales al repositorio.
+   - `JWT_SECRET`: clave aleatoria de al menos 32 caracteres.
+   - `NEXT_PUBLIC_APP_URL`: URL pública de la aplicación, por ejemplo `https://tu-dominio.vercel.app`; se usa en los enlaces de restablecimiento de contraseña.
+   - `JWT_EXPIRES_IN` es opcional; por defecto es `30d`.
+   - Si habilitas el envío de correo, configura todos los valores `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` y `SMTP_FROM`. Deben configurarse juntos.
+3. Usa **Next.js** como framework, `npm run build` como Build Command y `npm ci` como Install Command. Deja **Output Directory** vacío para que Vercel use su integración de Next.js.
+4. Guarda las variables antes del primer deploy. Para cambiarlas después, vuelve a desplegar para que la nueva versión las reciba.
 
-2. **Configura Variables de Entorno**
-   ```env
-   DATABASE_URL=postgresql://...
-   JWT_SECRET=<strong-secret-min-32-chars>
-   JWT_EXPIRES_IN=30d
-   NEXT_PUBLIC_APP_URL=https://tu-dominio.vercel.app
-   ```
-
-3. **Configura Build Settings**
-   - Framework Preset: Next.js
-   - Build Command: `npm run build`
-   - Install Command: `npm install`
-   - Output Directory: (dejar vacío)
-
-4. **Deploy**
-   - Click "Deploy"
-   - Vercel detectará automáticamente Next.js y optimizará el build
+El build necesita `DATABASE_URL`: si Vercel muestra `DATABASE_URL must be configured`, agrégala en las variables del proyecto para el entorno que está desplegando y vuelve a ejecutar el build. Las variables del `.env` local no se publican ni se copian a Vercel.
 
 ### Cloudflare Workers
 

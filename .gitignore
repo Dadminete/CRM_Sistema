@@ -32,8 +32,8 @@ yarn-error.log*
 /cloud_backup_final_v2.sql
 
 # local env files
-.env
-.env*.local
+.env*
+!.env.example
 
 # local uploads fallback (dev only)
 public/uploads/*
