@@ -7,7 +7,12 @@ const nextConfig = {
 
   // Optimizaciones de compilación
   compiler: {
-    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error"] } : false,
+    removeConsole: process.env.NODE_ENV === "production",
+  },
+
+  // DATABASE_URL references this CA file through sslrootcert at runtime.
+  outputFileTracingIncludes: {
+    "/*": ["./certs/supabase-prod-ca-2021.crt"],
   },
 
   // ws es un módulo nativo de Node; Webpack no debe intentar bundlearlo
