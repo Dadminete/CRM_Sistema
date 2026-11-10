@@ -7,7 +7,7 @@ const nextConfig = {
 
   // Optimizaciones de compilación
   compiler: {
-    removeConsole: process.env.NODE_ENV === "production",
+    removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error"] } : false,
   },
 
   // ws es un módulo nativo de Node; Webpack no debe intentar bundlearlo
