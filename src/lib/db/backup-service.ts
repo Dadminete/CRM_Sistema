@@ -66,7 +66,8 @@ export const backupService = {
     const fileName = `backup-${timestamp}.sql`;
     const filePath = path.join(this.getBackupPath(), fileName);
     const pgDumpPath = this.getPostgresExecutable("pg_dump");
-    const dbUrl = process.env.BACKUP_DATABASE_URL ?? process.env.DATABASE_URL;
+    const backupDatabaseUrl = process.env.BACKUP_DATABASE_URL;
+    const dbUrl = backupDatabaseUrl ?? process.env.DATABASE_URL;
     const webhookUrl = process.env.BACKUP_WEBHOOK_URL;
 
     if (!dbUrl) {
@@ -85,7 +86,7 @@ export const backupService = {
     console.log("Backup path:", this.getBackupPath());
     console.log("pg_dump path:", pgDumpPath);
     console.log("File path:", filePath);
-    console.log("Using DATABASE_URL for backup:", !!dbUrl);
+    console.log(`Using ${backupDatabaseUrl ? "BACKUP_DATABASE_URL" : "DATABASE_URL"} for backup`);
 
     if (this.getPostgresBin() && !fs.existsSync(pgDumpPath)) {
       console.error("pg_dump not found at:", pgDumpPath);

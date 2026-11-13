@@ -249,6 +249,11 @@ export const sidebarItemsBase: NavGroup[] = [
             url: "/dashboard/facturas/pagos-mes",
             icon: "CalendarCheck",
           },
+          {
+            title: "Recordatorio de pago",
+            url: "/dashboard/recordatorio-pago",
+            icon: "FileText",
+          },
         ],
       },
       {
